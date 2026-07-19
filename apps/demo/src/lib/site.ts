@@ -28,7 +28,8 @@ const LOCAL_CONFIG: PublicationConfig = {
 };
 
 /** Shape local markdown into records in memory, then hand back a Site — never
- * touching the raw frontmatter downstream. */
+ * touching the raw frontmatter downstream. Local records have no at:// uri
+ * (they don't live in a PDS), hence uri: null. */
 function loadLocalSite(): Site {
   const publication = publicationRecord(LOCAL_CONFIG);
   const documents = readdirSync(POSTS_DIR)
@@ -36,10 +37,12 @@ function loadLocalSite(): Site {
     .map((file) => {
       const md = readFileSync(join(POSTS_DIR, file), "utf8");
       const post = parsePost(md, file.replace(/\.md$/, ""));
-      return documentRecord(post, { siteUri: publication.url });
+      return { uri: null, value: documentRecord(post, { siteUri: publication.url }) };
     })
-    .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime());
-  return { publication, documents };
+    .sort(
+      (a, b) => new Date(b.value.publishedAt).getTime() - new Date(a.value.publishedAt).getTime(),
+    );
+  return { publication, publicationUri: null, documents };
 }
 
 /**

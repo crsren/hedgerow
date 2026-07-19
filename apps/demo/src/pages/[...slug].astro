@@ -5,16 +5,17 @@ import type { DocumentRecord } from "@hedgerow/publish";
 
 export async function getStaticPaths() {
   const { documents } = await loadSite();
-  return documents.map((doc) => ({
-    params: { slug: slugOf(doc) },
-    props: { doc },
+  return documents.map(({ uri, value }) => ({
+    params: { slug: slugOf(value) },
+    props: { doc: value, recordUri: uri },
   }));
 }
 
 interface Props {
   doc: DocumentRecord;
+  recordUri: string | null;
 }
-const { doc } = Astro.props;
+const { doc, recordUri } = Astro.props;
 
 // textContent is plaintext; the only structure it carries is paragraph breaks
 // (double newlines). Split those back into <p> elements — single newlines within
@@ -31,7 +32,7 @@ const dateFmt = new Intl.DateTimeFormat("en", {
 });
 ---
 
-<Base title={doc.title} description={doc.description}>
+<Base title={doc.title} description={doc.description} recordUri={recordUri}>
   <p class="back"><a href="/">← All posts</a></p>
 
   <article>

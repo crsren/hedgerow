@@ -60,12 +60,14 @@ describe("publish -> read round trip (local PDS)", () => {
     expect(site.publication?.url).toBe("https://crsren.com");
     expect(site.documents).toHaveLength(1);
 
+    expect(site.publicationUri).toBe(result.publicationUri);
     const doc = site.documents[0]!;
-    expect(doc.title).toBe("Back to Web One");
-    expect(doc.path).toBe("/back-to-web-one");
-    expect(doc.site).toBe(result.publicationUri);
-    expect(doc.textContent).toContain("The web used to be");
-    expect(doc.tags).toEqual(["atproto", "web"]);
+    expect(doc.uri).toBe(result.documents[0]!.uri);
+    expect(doc.value.title).toBe("Back to Web One");
+    expect(doc.value.path).toBe("/back-to-web-one");
+    expect(doc.value.site).toBe(result.publicationUri);
+    expect(doc.value.textContent).toContain("The web used to be");
+    expect(doc.value.tags).toEqual(["atproto", "web"]);
   });
 
   it("is idempotent: re-publishing with saved state reuses rkeys and skips unchanged writes", async () => {
@@ -89,8 +91,8 @@ describe("publish -> read round trip (local PDS)", () => {
     const after = await readSiteFromPds(pdsUrl, did);
     expect(after.documents).toHaveLength(countAfterFirst);
     // unchanged republish must not stamp updatedAt
-    const doc = after.documents.find((d) => d.path === "/back-to-web-one");
-    expect(doc?.updatedAt).toBeUndefined();
+    const doc = after.documents.find((d) => d.value.path === "/back-to-web-one");
+    expect(doc?.value.updatedAt).toBeUndefined();
   });
 
   it("stamps updatedAt only when content actually changes", async () => {
@@ -110,8 +112,8 @@ describe("publish -> read round trip (local PDS)", () => {
 
     expect(second.documents[0]!.changed).toBe(true);
     const site = await readSiteFromPds(pdsUrl, did);
-    const doc = site.documents.find((d) => d.path === "/changing-post");
-    expect(doc?.textContent).toBe("Edited body.");
-    expect(doc?.updatedAt).toBeDefined();
+    const doc = site.documents.find((d) => d.value.path === "/changing-post");
+    expect(doc?.value.textContent).toBe("Edited body.");
+    expect(doc?.value.updatedAt).toBeDefined();
   });
 });

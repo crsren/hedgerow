@@ -1,6 +1,7 @@
 // Pluggable write auth. v0 is app-password; atproto OAuth will implement the same
 // Publisher interface later, so callers (publishSite) never change.
 import { AtpAgent } from "@atproto/api";
+import { resolvePds } from "./read.js";
 
 /** Minimal write surface publishSite needs — decouples it from how you authed. */
 export interface Publisher {
@@ -39,13 +40,18 @@ export interface AppPasswordOptions {
   identifier: string;
   /** An app password (Bluesky → Settings → App Passwords), NEVER the account password. */
   password: string;
-  /** Defaults to https://bsky.social. */
+  /**
+   * PDS endpoint override (mainly for tests/local PDS). When omitted, the
+   * identifier's DID document is resolved and its #atproto_pds endpoint is
+   * used — never a hardcoded bsky.social, so self-hosted PDS accounts work.
+   */
   service?: string;
 }
 
 /** Log in with an app password and return a Publisher. */
 export async function appPasswordPublisher(opts: AppPasswordOptions): Promise<Publisher> {
-  const agent = new AtpAgent({ service: opts.service ?? "https://bsky.social" });
+  const service = opts.service ?? (await resolvePds(opts.identifier)).pds;
+  const agent = new AtpAgent({ service });
   await agent.login({ identifier: opts.identifier, password: opts.password });
   return agentPublisher(agent);
 }

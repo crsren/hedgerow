@@ -59,9 +59,19 @@ export async function resolvePds(
   return { did, pds: svc.serviceEndpoint };
 }
 
+export interface SiteDocument {
+  /** at:// URI of the record — pages emit it in a <link rel="site.standard.document">
+   * tag so the record and the live page point at each other. Null when the
+   * document was shaped locally and doesn't live in a PDS (yet). */
+  uri: string | null;
+  value: DocumentRecord;
+}
+
 export interface Site {
   publication: PublicationRecord | null;
-  documents: DocumentRecord[];
+  /** at:// URI of the publication record (null when shaped locally). */
+  publicationUri: string | null;
+  documents: SiteDocument[];
 }
 
 /** Read a full site (publication + documents) directly from a PDS by repo DID. */
@@ -76,9 +86,13 @@ export async function readSiteFromPds(
   ]);
   return {
     publication: pubs[0]?.value ?? null,
+    publicationUri: pubs[0]?.uri ?? null,
     documents: docs
-      .map((r) => r.value)
-      .sort((a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime()),
+      .map((r) => ({ uri: r.uri, value: r.value }))
+      .sort(
+        (a, b) =>
+          new Date(b.value.publishedAt).getTime() - new Date(a.value.publishedAt).getTime(),
+      ),
   };
 }
 

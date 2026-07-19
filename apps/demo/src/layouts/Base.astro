@@ -2,8 +2,13 @@
 interface Props {
   title: string;
   description?: string;
+  /** at:// URI of this page's site.standard record. Emitted as a <link> tag so
+   * the record and the live page point at each other — the bidirectional check
+   * Bluesky's enhanced preview crawls for. rel is the record's collection NSID. */
+  recordUri?: string | null;
+  recordRel?: "site.standard.document" | "site.standard.publication";
 }
-const { title, description } = Astro.props;
+const { title, description, recordUri, recordRel = "site.standard.document" } = Astro.props;
 ---
 
 <!doctype html>
@@ -13,6 +18,7 @@ const { title, description } = Astro.props;
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>{title}</title>
     {description && <meta name="description" content={description} />}
+    {recordUri && <link rel={recordRel} href={recordUri} />}
   </head>
   <body>
     <main>

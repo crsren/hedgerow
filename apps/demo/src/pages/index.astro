@@ -2,7 +2,7 @@
 import Base from "../layouts/Base.astro";
 import { loadSite, slugOf } from "../lib/site";
 
-const { publication, documents } = await loadSite();
+const { publication, publicationUri, documents } = await loadSite();
 const siteName = publication?.name ?? "Untitled site";
 
 const dateFmt = new Intl.DateTimeFormat("en", {
@@ -12,7 +12,12 @@ const dateFmt = new Intl.DateTimeFormat("en", {
 });
 ---
 
-<Base title={siteName} description={publication?.description}>
+<Base
+  title={siteName}
+  description={publication?.description}
+  recordUri={publicationUri}
+  recordRel="site.standard.publication"
+>
   <header>
     <h1>{siteName}</h1>
     {publication?.description && <p class="muted">{publication.description}</p>}
@@ -20,7 +25,7 @@ const dateFmt = new Intl.DateTimeFormat("en", {
 
   <ul class="posts">
     {
-      documents.map((doc) => (
+      documents.map(({ value: doc }) => (
         <li>
           <a class="post-title" href={`/${slugOf(doc)}`}>
             {doc.title}
