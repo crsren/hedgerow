@@ -1,0 +1,79 @@
+---
+import Base from "../layouts/Base.astro";
+import { loadSite, slugOf } from "../lib/site";
+
+const { publication, documents } = await loadSite();
+const siteName = publication?.name ?? "Untitled site";
+
+const dateFmt = new Intl.DateTimeFormat("en", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+---
+
+<Base title={siteName} description={publication?.description}>
+  <header>
+    <h1>{siteName}</h1>
+    {publication?.description && <p class="muted">{publication.description}</p>}
+  </header>
+
+  <ul class="posts">
+    {
+      documents.map((doc) => (
+        <li>
+          <a class="post-title" href={`/${slugOf(doc)}`}>
+            {doc.title}
+          </a>
+          <time datetime={doc.publishedAt}>
+            {dateFmt.format(new Date(doc.publishedAt))}
+          </time>
+          {doc.description && <p class="post-desc">{doc.description}</p>}
+          {doc.tags && doc.tags.length > 0 && (
+            <ul class="tags">
+              {doc.tags.map((tag) => (
+                <li>{tag}</li>
+              ))}
+            </ul>
+          )}
+        </li>
+      ))
+    }
+  </ul>
+</Base>
+
+<style>
+  header {
+    margin-bottom: 3.5rem;
+  }
+  header .muted {
+    font-size: 1.05rem;
+    margin: 0;
+  }
+
+  .posts {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2.75rem;
+  }
+
+  .post-title {
+    font-size: 1.35rem;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--fg);
+  }
+  .post-title:hover {
+    color: var(--accent);
+    text-decoration: none;
+  }
+
+  .post-desc {
+    margin: 0.6rem 0 0.75rem;
+  }
+</style>

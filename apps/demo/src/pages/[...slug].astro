@@ -1,0 +1,94 @@
+---
+import Base from "../layouts/Base.astro";
+import { loadSite, slugOf } from "../lib/site";
+import type { DocumentRecord } from "@hedgerow/publish";
+
+export async function getStaticPaths() {
+  const { documents } = await loadSite();
+  return documents.map((doc) => ({
+    params: { slug: slugOf(doc) },
+    props: { doc },
+  }));
+}
+
+interface Props {
+  doc: DocumentRecord;
+}
+const { doc } = Astro.props;
+
+// textContent is plaintext; the only structure it carries is paragraph breaks
+// (double newlines). Split those back into <p> elements — single newlines within
+// a paragraph collapse to spaces in HTML, which is exactly the hard-wrapped source.
+const paragraphs = (doc.textContent ?? "")
+  .split(/\n{2,}/)
+  .map((p) => p.trim())
+  .filter(Boolean);
+
+const dateFmt = new Intl.DateTimeFormat("en", {
+  year: "numeric",
+  month: "long",
+  day: "numeric",
+});
+---
+
+<Base title={doc.title} description={doc.description}>
+  <p class="back"><a href="/">← All posts</a></p>
+
+  <article>
+    <h1>{doc.title}</h1>
+    <time datetime={doc.publishedAt}>
+      {dateFmt.format(new Date(doc.publishedAt))}
+    </time>
+
+    {
+      doc.tags && doc.tags.length > 0 && (
+        <ul class="tags">
+          {doc.tags.map((tag) => (
+            <li>{tag}</li>
+          ))}
+        </ul>
+      )
+    }
+
+    <div class="body">
+      {paragraphs.map((p) => <p>{p}</p>)}
+    </div>
+  </article>
+
+  <footer>
+    <p class="muted">Rendered from a site.standard.document record</p>
+  </footer>
+</Base>
+
+<style>
+  .back {
+    margin: 0 0 2.5rem;
+    font-size: 0.9rem;
+  }
+
+  time {
+    display: block;
+    margin-bottom: 1rem;
+  }
+
+  .tags {
+    margin-bottom: 2.5rem;
+  }
+
+  .body {
+    font-size: 1.08rem;
+  }
+  .body p {
+    margin: 0 0 1.4rem;
+  }
+
+  footer {
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border);
+  }
+  footer .muted {
+    font-size: 0.85rem;
+    margin: 0;
+  }
+</style>

@@ -1,0 +1,54 @@
+# Release automation (Changesets).
+#
+# INERT until two things are true:
+#   1. An NPM_TOKEN secret is added to the repo (Settings → Secrets → Actions).
+#   2. The repo is public (npm provenance via --provenance requires a public,
+#      OIDC-attestable source).
+# Until then this workflow runs but the publish step is a no-op: with no
+# pending changesets it only ever opens a "Version Packages" PR, and even a
+# publish attempt without NPM_TOKEN simply fails to authenticate. Safe to merge.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push the version PR / tags
+  pull-requests: write # open & update the "Version Packages" PR
+  id-token: write # npm provenance (OIDC)
+
+jobs:
+  release:
+    name: version or publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      - run: pnpm install --frozen-lockfile
+
+      # Opens/updates a version PR when changesets are pending; publishes to npm
+      # when that PR lands. `pnpm release` builds packages then runs
+      # `changeset publish`.
+      - name: Create Release PR or publish
+        uses: changesets/action@v1
+        with:
+          publish: pnpm release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Enable npm provenance once the repo is public.
+          NPM_CONFIG_PROVENANCE: true
