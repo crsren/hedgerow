@@ -1,12 +1,15 @@
-# Release automation (Changesets).
+# Release automation (Changesets) — VERSIONING ONLY for now.
 #
-# INERT until two things are true:
-#   1. An NPM_TOKEN secret is added to the repo (Settings → Secrets → Actions).
-#   2. The repo is public (npm provenance via --provenance requires a public,
-#      OIDC-attestable source).
-# Until then this workflow runs but the publish step is a no-op: with no
-# pending changesets it only ever opens a "Version Packages" PR, and even a
-# publish attempt without NPM_TOKEN simply fails to authenticate. Safe to merge.
+# The changesets action deliberately has NO `publish:` input yet, so it only
+# ever opens/updates a "Version Packages" PR and can never push to npm.
+# (Lesson learned: with `publish:` set, `changeset publish` attempts to publish
+# any package whose version is absent from the registry — even with zero
+# pending changesets. It tried on the very first push.)
+#
+# To enable real publishing later, all three of:
+#   1. Create the @hedgerow org on npm and add an NPM_TOKEN repo secret.
+#   2. Make the repo public (npm provenance needs an OIDC-attestable source).
+#   3. Restore `publish: pnpm release` on the changesets/action step below.
 
 name: Release
 
@@ -40,15 +43,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      # Opens/updates a version PR when changesets are pending; publishes to npm
-      # when that PR lands. `pnpm release` builds packages then runs
-      # `changeset publish`.
-      - name: Create Release PR or publish
+      # Opens/updates a "Version Packages" PR when changesets are pending.
+      # No `publish:` input — see header comment before adding one.
+      - name: Create Release PR
         uses: changesets/action@v1
-        with:
-          publish: pnpm release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
-          # Enable npm provenance once the repo is public.
-          NPM_CONFIG_PROVENANCE: true
