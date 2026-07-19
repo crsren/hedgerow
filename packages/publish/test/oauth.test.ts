@@ -2,13 +2,13 @@
 // dance, which is manual (see the README testing section). We cover: the
 // file-backed store round-trip, the Publisher adapter over a fake OAuth-session
 // Agent, and the pure loopback client-metadata construction.
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { Agent } from "@atproto/api";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { agentPublisher } from "../src/auth.js";
-import { loopbackClientMetadata, loopbackRedirectUri } from "../src/oauth.js";
+import { clearSession, loopbackClientMetadata, loopbackRedirectUri } from "../src/oauth.js";
 import { FileStore } from "../src/store.js";
 
 describe("FileStore", () => {
@@ -147,5 +147,53 @@ describe("loopbackClientMetadata", () => {
     expect(new URL(md.client_id).searchParams.get("redirect_uri")).toBe(
       "http://127.0.0.1:5555/callback",
     );
+  });
+});
+
+describe("clearSession (local sign-out)", () => {
+  let dir: string;
+  const SESSION_FILE = "oauth-session.json";
+  const STATE_FILE = "oauth-state.json";
+
+  beforeEach(() => {
+    dir = mkdtempSync(join(tmpdir(), "hedgerow-clear-"));
+  });
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  /** Seed two cached sessions and a transient auth-state file. */
+  function seed() {
+    const sessions = new FileStore<{ token: string }>(join(dir, SESSION_FILE));
+    sessions.set("did:plc:alice", { token: "a" });
+    sessions.set("did:plc:bob", { token: "b" });
+    const state = new FileStore<{ code: string }>(join(dir, STATE_FILE));
+    state.set("state-xyz", { code: "pending" });
+  }
+  const sessionKeys = () => new FileStore(join(dir, SESSION_FILE)).keys();
+  const stateKeys = () => new FileStore(join(dir, STATE_FILE)).keys();
+
+  it("clears only the named did's session (and always the transient state)", async () => {
+    seed();
+    await clearSession({ store: dir, identifier: "did:plc:alice" });
+
+    expect(sessionKeys()).toEqual(["did:plc:bob"]);
+    // Transient auth state is throwaway — wiped regardless.
+    expect(stateKeys()).toEqual([]);
+  });
+
+  it("clears every cached session when no identifier is given", async () => {
+    seed();
+    await clearSession({ store: dir });
+
+    expect(sessionKeys()).toEqual([]);
+    expect(stateKeys()).toEqual([]);
+  });
+
+  it("is a no-op-safe sign-out against an empty store", async () => {
+    await clearSession({ store: dir });
+    expect(sessionKeys()).toEqual([]);
+    // The clear writes an empty store file, so it exists and parses.
+    expect(JSON.parse(readFileSync(join(dir, STATE_FILE), "utf8"))).toEqual({});
   });
 });

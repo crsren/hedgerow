@@ -69,4 +69,33 @@ describe("Likes components", () => {
     await findByText("dah1234.bsky.social");
     expect(container.querySelectorAll("span").length).toBeGreaterThanOrEqual(2);
   });
+
+  it("renders the Empty part when the post has no likes", async () => {
+    const stub = stubFetch((method) =>
+      method === "app.bsky.feed.getLikes"
+        ? jsonResponse({ uri: ROOT_URI, likes: [] })
+        : jsonResponse({}, 501),
+    );
+    const { findByText, container } = render(
+      <Likes.Root post={ROOT_URI} maxPages={1} fetchImpl={stub.fetch}>
+        <Likes.Empty>No likes yet</Likes.Empty>
+        <Likes.Count />
+      </Likes.Root>,
+    );
+    const empty = await findByText("No likes yet");
+    expect(empty.hasAttribute("data-empty")).toBe(true);
+  });
+
+  it("renders the Error part (role=alert) when the likes fetch fails", async () => {
+    const stub = stubFetch(() => jsonResponse({ error: "NotFound", message: "gone" }, 404));
+    const { findByText } = render(
+      <Likes.Root post={ROOT_URI} fetchImpl={stub.fetch}>
+        <Likes.Loading>Loading…</Likes.Loading>
+        <Likes.Error>Could not load likes</Likes.Error>
+      </Likes.Root>,
+    );
+    const alert = await findByText("Could not load likes");
+    expect(alert.getAttribute("role")).toBe("alert");
+    expect(alert.hasAttribute("data-error")).toBe(true);
+  });
 });

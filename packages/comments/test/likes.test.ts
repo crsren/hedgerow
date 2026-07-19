@@ -74,4 +74,27 @@ describe("fetchLikes pagination", () => {
     });
     expect(new URL(stub.calls[0]!).searchParams.get("limit")).toBe("25");
   });
+
+  it("resolves a handle-based reference before paging when not pre-resolved", async () => {
+    const p1 = loadFixture<RawGetLikesResponse>("getLikes");
+    const stub = stubFetch((url) => {
+      if (url.pathname.endsWith("com.atproto.identity.resolveHandle")) {
+        return jsonResponse({ did: "did:plc:6kos45lixtga3pdwuncvh32x" });
+      }
+      if (url.pathname.endsWith("app.bsky.feed.getLikes")) return jsonResponse({ ...p1, cursor: undefined });
+      return jsonResponse({ error: "MethodNotImplemented" }, 501);
+    });
+
+    const res = await fetchLikes("https://bsky.app/profile/liker.bsky.social/post/3mqc36slinc2m", {
+      fetchImpl: stub.fetch,
+      maxPages: 1,
+      cacheTtlMs: 0, // don't pollute the shared handle cache across tests
+    });
+
+    expect(res.uri).toBe(POST_URI);
+    expect(res.likes).toHaveLength(p1.likes.length);
+    // The handle was resolved to a DID before the getLikes call went out.
+    expect(stub.calls[0]).toContain("resolveHandle");
+    expect(stub.calls[1]).toContain("getLikes");
+  });
 });

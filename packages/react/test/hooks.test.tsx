@@ -1,11 +1,13 @@
+import * as React from "react";
 import { describe, it, expect } from "vitest";
 import { renderHook, act, waitFor } from "@testing-library/react";
-import { useComments, useLikes } from "../src/index";
-import type { RawGetPostThreadResponse, Comment } from "@hedgerow/comments";
+import { useComments, useLikes, useCommentNode } from "../src/index";
+import type { CommentNode, RawGetPostThreadResponse, Comment } from "@hedgerow/comments";
+import { CommentItemContext } from "../src/context";
 import { loadFixture, jsonResponse, stubFetch, ROOT_URI } from "./helpers";
 
-function threadFetch() {
-  const body = loadFixture<RawGetPostThreadResponse>("getPostThread");
+function threadFetch(fixture = "getPostThread") {
+  const body = loadFixture<RawGetPostThreadResponse>(fixture);
   return stubFetch((method) =>
     method === "app.bsky.feed.getPostThread" ? jsonResponse(body) : jsonResponse({}, 501),
   ).fetch;
@@ -68,6 +70,63 @@ describe("useComments (hooks-only)", () => {
     await waitFor(() => expect(result.current.isError).toBe(true));
     expect(result.current.error).toBeInstanceOf(Error);
   });
+
+  it("applies a filter recursively — stubs kept, matching comments kept", async () => {
+    const { result } = renderHook(() =>
+      useComments({
+        post: ROOT_URI,
+        fetchImpl: threadFetch("thread-with-stubs"),
+        // Keep every non-comment stub, and comments that have text.
+        filter: (n) => n.type !== "comment" || n.text.length > 0,
+      }),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const kinds = result.current.comments.map((c) => c.type);
+    expect(kinds).toContain("notFound"); // stub branch of filterTree
+    expect(kinds).toContain("comment"); // comment branch + recursion
+  });
+
+  it("yields an empty, isEmpty result when the filter rejects everything", async () => {
+    const { result } = renderHook(() =>
+      useComments({ post: ROOT_URI, fetchImpl: threadFetch(), filter: () => false }),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    expect(result.current.comments).toEqual([]);
+    expect(result.current.isEmpty).toBe(true);
+  });
+
+  it("forwards maxDepth and appView through to the fetch", async () => {
+    const body = loadFixture<RawGetPostThreadResponse>("getPostThread");
+    const stub = stubFetch((method) =>
+      method === "app.bsky.feed.getPostThread" ? jsonResponse(body) : jsonResponse({}, 501),
+    );
+    const { result } = renderHook(() =>
+      useComments({
+        post: ROOT_URI,
+        maxDepth: 3,
+        appView: "https://appview.test",
+        cacheTtlMs: 0,
+        fetchImpl: stub.fetch,
+      }),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const url = new URL(stub.calls[0]!);
+    expect(url.origin).toBe("https://appview.test");
+    expect(url.searchParams.get("depth")).toBe("3");
+  });
+});
+
+describe("useCommentNode", () => {
+  it("returns the node from the surrounding item context", () => {
+    const node: CommentNode = { type: "notFound", uri: "at://gone" };
+    const wrapper = ({ children }: { children: React.ReactNode }) => (
+      <CommentItemContext.Provider value={{ node, depth: 0, index: 0, template: null }}>
+        {children}
+      </CommentItemContext.Provider>
+    );
+    const { result } = renderHook(() => useCommentNode(), { wrapper });
+    expect(result.current).toBe(node);
+  });
 });
 
 describe("useLikes (hooks-only)", () => {
@@ -82,5 +141,53 @@ describe("useLikes (hooks-only)", () => {
     await waitFor(() => expect(result.current.isSuccess).toBe(true));
     expect(result.current.total).toBe(5);
     expect(result.current.likes[0]?.actor.handle).toBe("dah1234.bsky.social");
+  });
+
+  it("seeds from initialData and skips the mount fetch", async () => {
+    const seed = {
+      uri: ROOT_URI,
+      likes: [{ actor: { did: "did:plc:a", handle: "a.bsky.social" } }],
+      total: 1,
+      cursor: undefined,
+    };
+    const stub = stubFetch(() => jsonResponse({}, 501));
+    const { result } = renderHook(() =>
+      useLikes({ post: ROOT_URI, initialData: seed, fetchImpl: stub.fetch }),
+    );
+    expect(result.current.isSuccess).toBe(true);
+    expect(result.current.total).toBe(1);
+    expect(result.current.likes).toHaveLength(1);
+    await waitFor(() => expect(stub.calls.length).toBe(0));
+  });
+
+  it("captures the error when the likes fetch fails", async () => {
+    const stub = stubFetch(() => jsonResponse({ error: "NotFound" }, 404));
+    const { result } = renderHook(() => useLikes({ post: ROOT_URI, fetchImpl: stub.fetch }));
+    await waitFor(() => expect(result.current.isError).toBe(true));
+    expect(result.current.error).toBeInstanceOf(Error);
+    expect(result.current.likes).toEqual([]);
+  });
+
+  it("forwards pageSize, maxPages, and appView through to the fetch", async () => {
+    const body = loadFixture("getLikes");
+    const stub = stubFetch((method) =>
+      method === "app.bsky.feed.getLikes"
+        ? jsonResponse({ ...(body as object), cursor: undefined })
+        : jsonResponse({}, 501),
+    );
+    const { result } = renderHook(() =>
+      useLikes({
+        post: ROOT_URI,
+        pageSize: 10,
+        maxPages: 1,
+        appView: "https://appview.test",
+        cacheTtlMs: 0,
+        fetchImpl: stub.fetch,
+      }),
+    );
+    await waitFor(() => expect(result.current.isSuccess).toBe(true));
+    const url = new URL(stub.calls[0]!);
+    expect(url.origin).toBe("https://appview.test");
+    expect(url.searchParams.get("limit")).toBe("10");
   });
 });

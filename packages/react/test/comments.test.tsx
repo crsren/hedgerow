@@ -189,6 +189,50 @@ describe("Comments stubs, labels, sort", () => {
   });
 });
 
+describe("Comments.ReplyLink", () => {
+  it("links to the root post outside an item and to the comment inside one", async () => {
+    const stub = threadStub("getPostThread");
+    const { container, findByTestId } = render(
+      <Comments.Root post={ROOT_URI} fetchImpl={stub.fetch}>
+        <Comments.ReplyLink data-testid="root-reply" />
+        <Comments.List>
+          <Comments.Item>
+            <Comments.ReplyLink data-testid="item-reply" />
+          </Comments.Item>
+        </Comments.List>
+      </Comments.Root>,
+    );
+
+    // Outside any item → targets the root post, flagged data-root, opens a new tab.
+    const rootLink = await findByTestId("root-reply");
+    expect(rootLink.getAttribute("href")).toContain(
+      "/profile/did:plc:6kos45lixtga3pdwuncvh32x/post/",
+    );
+    expect(rootLink.hasAttribute("data-root")).toBe(true);
+    expect(rootLink.getAttribute("target")).toBe("_blank");
+    expect(rootLink.getAttribute("rel")).toBe("noopener noreferrer");
+    expect(rootLink.textContent).toBe("Reply on Bluesky");
+
+    // Inside an item → targets that comment, and is NOT flagged data-root.
+    const itemLinks = container.querySelectorAll('[data-testid="item-reply"]');
+    expect(itemLinks.length).toBeGreaterThan(0);
+    const first = itemLinks[0] as HTMLAnchorElement;
+    expect(first.getAttribute("href")).toContain("/post/");
+    expect(first.hasAttribute("data-root")).toBe(false);
+  });
+
+  it("renders custom link text via children", async () => {
+    const stub = threadStub("getPostThread");
+    const { findByText } = render(
+      <Comments.Root post={ROOT_URI} fetchImpl={stub.fetch}>
+        <Comments.ReplyLink>Join the conversation</Comments.ReplyLink>
+      </Comments.Root>,
+    );
+    const link = await findByText("Join the conversation");
+    expect(link.tagName).toBe("A");
+  });
+});
+
 describe("Comments accessibility", () => {
   it("marks Root aria-busy while loading and clears it once loaded", async () => {
     const gate = deferred<Response>();

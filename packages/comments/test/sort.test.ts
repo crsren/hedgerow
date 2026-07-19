@@ -57,4 +57,30 @@ describe("sortReplies", () => {
     sortReplies(input, "most-liked");
     expect(input.map((n) => n.uri)).toEqual(snapshot);
   });
+
+  it("breaks most-liked ties by recency (newer wins)", () => {
+    const older = comment({ uri: "older", createdAt: "2021-01-01T00:00:00Z", likeCount: 7 });
+    const newer = comment({ uri: "newer", createdAt: "2023-01-01T00:00:00Z", likeCount: 7 });
+    // Equal likeCount → the tie-break clause orders the newer comment first.
+    expect(sortReplies([older, newer], "most-liked").map((n) => n.uri)).toEqual(["newer", "older"]);
+  });
+
+  it("treats an unparseable createdAt as the oldest possible time", () => {
+    const bad = comment({ uri: "bad", createdAt: "not-a-date", likeCount: 0 });
+    // NaN timestamp collapses to 0, so newest-first sorts it behind real dates.
+    const out = sortReplies([bad, a, b], "newest").map((n) => n.uri);
+    expect(out[out.length - 1]).toBe("bad");
+    // ...and oldest-first surfaces it first (0 ≤ any real epoch).
+    expect(sortReplies([a, b, bad], "oldest")[0]!.uri).toBe("bad");
+  });
+
+  it("keeps two trailing stubs in their original relative order", () => {
+    const blocked: CommentNode = { type: "blocked", uri: "blk" };
+    // Both stubs → the stub!==stub guard is false and the stable sort preserves
+    // their input order after the real comment.
+    const out = sortReplies([stub, blocked, a], "newest").map((n) => n.uri);
+    expect(out).toEqual(["a", "gone", "blk"]);
+    // A real comment ahead of a trailing stub exercises the mirror comparison.
+    expect(sortReplies([a, stub], "newest").map((n) => n.uri)).toEqual(["a", "gone"]);
+  });
 });
