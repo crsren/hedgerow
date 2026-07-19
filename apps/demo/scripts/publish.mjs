@@ -10,7 +10,9 @@
 //   ATP_IDENTIFIER=you.bsky.social pnpm --filter @hedgerow/demo run publish:pds
 //
 // Flags:
-//   --share           auto-create a canonical Bluesky share post for any post
+//   --share           auto-create a canonical Bluesky share post for any post.
+//                     Creates REAL public posts from your account — previews
+//                     them and asks for confirmation first (--yes to skip).
 //                     lacking a comment anchor, and use it as the bskyPostRef.
 //   --prune           delete document records for slugs no longer in ./posts.
 //   --print-auth-url  on a fresh login, print the authorization URL instead of
@@ -86,7 +88,36 @@ async function main() {
 
   console.log(`Publishing ${posts.length} post(s) as ${publisher.did}…\n`);
 
-  const result = await publishSite(publisher, config, posts, loadState(), {
+  const state = loadState();
+
+  // --share creates REAL, publicly visible Bluesky posts from the logged-in
+  // account. Show exactly what would be posted and require explicit consent
+  // (or --yes) before doing it — records are quiet data, feed posts are not.
+  if (share) {
+    const wouldShare = posts.filter(
+      (p) => !p.bskyPostRef && !p.bskyPostUri && !state.shares?.[p.slug],
+    );
+    if (wouldShare.length > 0) {
+      console.log(`--share will create ${wouldShare.length} PUBLIC Bluesky post(s) from ${publisher.did}:\n`);
+      for (const p of wouldShare) {
+        const url = `${config.url.replace(/\/+$/, "")}/${p.slug}`;
+        console.log(`  ─────`);
+        console.log(`  ${p.title}\n\n  ${url}\n`);
+      }
+      if (!process.argv.includes("--yes")) {
+        const { createInterface } = await import("node:readline/promises");
+        const rl = createInterface({ input: process.stdin, output: process.stdout });
+        const answer = (await rl.question("Post these to Bluesky? [y/N] ")).trim().toLowerCase();
+        rl.close();
+        if (answer !== "y" && answer !== "yes") {
+          console.log("Aborted — nothing was published (rerun without --share to publish records only).");
+          process.exit(0);
+        }
+      }
+    }
+  }
+
+  const result = await publishSite(publisher, config, posts, state, {
     ...(share ? { share: { enabled: true } } : {}),
     prune,
   });
