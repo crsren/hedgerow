@@ -1,0 +1,8 @@
+{
+  "extends": "@hedgerow/tsconfig/react.json",
+  "compilerOptions": {
+    "rootDir": ".",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*", "test/**/*"]
+}

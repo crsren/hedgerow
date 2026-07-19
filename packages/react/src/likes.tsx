@@ -1,0 +1,227 @@
+// The `Likes.*` namespace: a small, focused family for rendering who liked a
+// post and how many. Same headless rules as `Comments.*` — default element,
+// state to `render`, `data-*` reflection, zero styles.
+import * as React from "react";
+import type { Like } from "@hedgerow/comments";
+import { renderElement, dataAttrs } from "./render";
+import type { HeadlessProps } from "./render";
+import { LikesRootContext, LikeItemContext, useLikesContext, useLikeItemContext } from "./context";
+import { useLikes, type UseLikesOptions, type UseLikesReturn } from "./useLikes";
+import type { PartProps } from "./comments";
+
+const keyOf = (like: Like): string => like.actor.did;
+
+// ── Root ─────────────────────────────────────────────────────────────────────
+
+export interface LikesRootState {
+  status: UseLikesReturn["status"];
+  total: number;
+  isEmpty: boolean;
+}
+
+export interface LikesRootProps
+  extends UseLikesOptions,
+    HeadlessProps<LikesRootState>,
+    Omit<React.ComponentPropsWithoutRef<"div">, "className" | "style" | "children"> {}
+
+/** Provider + container for a post's likes. Renders a `<div>` by default. */
+export const Root = React.forwardRef<HTMLDivElement, LikesRootProps>(function LikesRoot(
+  { post, pageSize, maxPages, initialData, appView, fetchImpl, cacheTtlMs, render, className, style, children, ...rest },
+  ref,
+) {
+  const value = useLikes({
+    post,
+    ...(pageSize !== undefined ? { pageSize } : {}),
+    ...(maxPages !== undefined ? { maxPages } : {}),
+    ...(initialData !== undefined ? { initialData } : {}),
+    ...(appView !== undefined ? { appView } : {}),
+    ...(fetchImpl !== undefined ? { fetchImpl } : {}),
+    ...(cacheTtlMs !== undefined ? { cacheTtlMs } : {}),
+  });
+
+  const state: LikesRootState = { status: value.status, total: value.total, isEmpty: value.isEmpty };
+
+  const element = renderElement("div", {
+    state,
+    render,
+    className,
+    style,
+    ref,
+    props: {
+      ...rest,
+      ...dataAttrs({
+        status: value.status,
+        loading: value.isLoading,
+        error: value.isError,
+        empty: value.isEmpty,
+        total: value.total,
+      }),
+      children,
+    },
+  });
+
+  return <LikesRootContext.Provider value={value}>{element}</LikesRootContext.Provider>;
+});
+
+// ── Count ────────────────────────────────────────────────────────────────────
+
+export interface LikesCountState {
+  total: number;
+}
+
+export type LikesCountProps = PartProps<LikesCountState, "span">;
+
+/** The collected like total. Defaults to the number. */
+export const Count = React.forwardRef<HTMLSpanElement, LikesCountProps>(function LikesCount(
+  { render, className, style, children, ...rest },
+  ref,
+) {
+  const { total } = useLikesContext();
+  const state: LikesCountState = { total };
+  return renderElement("span", {
+    state,
+    render,
+    className,
+    style,
+    ref,
+    props: { ...rest, ...dataAttrs({ total }), children: children ?? total },
+  });
+});
+
+// ── Avatars ──────────────────────────────────────────────────────────────────
+
+/** Wrap one liker's template in its context. */
+function LikeProvider({ like, children }: { like: Like; children: React.ReactNode }): React.ReactElement {
+  return <LikeItemContext.Provider value={like}>{children}</LikeItemContext.Provider>;
+}
+
+export interface LikesAvatarsState {
+  count: number;
+  total: number;
+}
+
+export interface LikesAvatarsProps extends PartProps<LikesAvatarsState, "div"> {
+  /** Cap how many likers to render (e.g. an avatar stack of 5). */
+  max?: number;
+}
+
+/**
+ * Renders one entry per liker. With a child template (referencing `Likes.Avatar`)
+ * it repeats that per liker; with no children it renders a default `<img>` stack.
+ * Renders nothing when there are no likes.
+ */
+export const Avatars = React.forwardRef<HTMLDivElement, LikesAvatarsProps>(function LikesAvatars(
+  { render, className, style, children, max, ...rest },
+  ref,
+) {
+  const { likes, total } = useLikesContext();
+  const shown = max !== undefined ? likes.slice(0, max) : likes;
+  if (shown.length === 0) return null;
+
+  const state: LikesAvatarsState = { count: shown.length, total };
+  const items = shown.map((like) => (
+    <LikeProvider key={keyOf(like)} like={like}>
+      {children ?? <Avatar />}
+    </LikeProvider>
+  ));
+
+  return renderElement("div", {
+    state,
+    render,
+    className,
+    style,
+    ref,
+    props: { ...rest, ...dataAttrs({ count: shown.length, total }), children: items },
+  });
+});
+
+export interface LikeAvatarState {
+  like: Like;
+  actor: Like["actor"];
+}
+
+export type LikeAvatarProps = PartProps<LikeAvatarState, "img">;
+
+/** A single liker's avatar `<img>`. Renders nothing when they have no avatar. */
+export const Avatar = React.forwardRef<HTMLImageElement, LikeAvatarProps>(function LikeAvatar(
+  { render, className, style, ...rest },
+  ref,
+) {
+  const like = useLikeItemContext();
+  if (!like.actor.avatar) return null;
+  const state: LikeAvatarState = { like, actor: like.actor };
+  return renderElement("img", {
+    state,
+    render,
+    className,
+    style,
+    ref,
+    props: {
+      src: like.actor.avatar,
+      alt: like.actor.displayName || like.actor.handle,
+      ...dataAttrs({ handle: like.actor.handle }),
+      ...rest,
+    },
+  });
+});
+
+// ── Conditional status wrappers ──────────────────────────────────────────────
+
+export type LikesLoadingProps = PartProps<Record<string, never>, "div">;
+
+export const Loading = React.forwardRef<HTMLDivElement, LikesLoadingProps>(function LikesLoading(
+  { render, className, style, children, ...rest },
+  ref,
+) {
+  const { isLoading } = useLikesContext();
+  if (!isLoading) return null;
+  return renderElement("div", {
+    state: {},
+    render,
+    className,
+    style,
+    ref,
+    props: { ...rest, ...dataAttrs({ loading: true }), children },
+  });
+});
+
+export type LikesEmptyProps = PartProps<Record<string, never>, "div">;
+
+export const Empty = React.forwardRef<HTMLDivElement, LikesEmptyProps>(function LikesEmpty(
+  { render, className, style, children, ...rest },
+  ref,
+) {
+  const { isEmpty } = useLikesContext();
+  if (!isEmpty) return null;
+  return renderElement("div", {
+    state: {},
+    render,
+    className,
+    style,
+    ref,
+    props: { ...rest, ...dataAttrs({ empty: true }), children },
+  });
+});
+
+export interface LikesErrorState {
+  error: unknown;
+}
+
+export type LikesErrorProps = PartProps<LikesErrorState, "div">;
+
+export const ErrorMessage = React.forwardRef<HTMLDivElement, LikesErrorProps>(function LikesError(
+  { render, className, style, children, ...rest },
+  ref,
+) {
+  const { isError, error } = useLikesContext();
+  if (!isError) return null;
+  const state: LikesErrorState = { error };
+  return renderElement("div", {
+    state,
+    render,
+    className,
+    style,
+    ref,
+    props: { role: "alert", ...rest, ...dataAttrs({ error: true }), children },
+  });
+});

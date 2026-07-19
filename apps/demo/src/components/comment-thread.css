@@ -1,0 +1,169 @@
+/* Reference styling for the headless @hedgerow/react parts. Everything keys off
+   the class names and the data-* state attributes the parts emit, reusing the
+   demo's CSS-variable palette (defined in Base.astro). Nothing here ships from
+   the package — this is exactly the layer a consumer writes. */
+
+.hedgerow {
+  margin-top: 3.5rem;
+  padding-top: 2rem;
+  border-top: 1px solid var(--border);
+}
+
+/* ── Likes ─────────────────────────────────────────────────────────────── */
+
+.hedgerow-likes {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 2rem;
+  min-height: 2rem;
+}
+.hedgerow-likes[data-empty] {
+  display: none;
+}
+
+.hedgerow-avatars {
+  display: flex;
+}
+.hedgerow-avatar {
+  width: 1.9rem;
+  height: 1.9rem;
+  border-radius: 50%;
+  border: 2px solid var(--bg);
+  margin-left: -0.55rem;
+  background: var(--border);
+  object-fit: cover;
+}
+.hedgerow-avatar:first-child {
+  margin-left: 0;
+}
+
+.hedgerow-likecount {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+/* ── Thread scaffolding ────────────────────────────────────────────────── */
+
+.hedgerow-status,
+.hedgerow-empty {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+.hedgerow-empty p {
+  margin: 0 0 0.5rem;
+}
+
+.hedgerow-toolbar {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+/* The toolbar is meaningful only once there are comments to summarise. */
+.hedgerow-comments[data-empty] .hedgerow-toolbar,
+.hedgerow-comments[data-loading] .hedgerow-toolbar,
+.hedgerow-comments[data-error] .hedgerow-toolbar {
+  display: none;
+}
+.hedgerow-toolbar p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+
+.hedgerow-reply,
+.hedgerow-item-reply {
+  font-size: 0.9rem;
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.hedgerow-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
+}
+
+/* ── A comment ─────────────────────────────────────────────────────────── */
+
+.hedgerow-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.hedgerow-head {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  flex-wrap: wrap;
+}
+.hedgerow-item-avatar {
+  width: 1.6rem;
+  height: 1.6rem;
+  border-radius: 50%;
+  object-fit: cover;
+  background: var(--border);
+}
+.hedgerow-author {
+  font-weight: 600;
+  font-size: 0.95rem;
+}
+.hedgerow-time {
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.hedgerow-content {
+  font-size: 1rem;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.hedgerow-foot {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+/* Nested replies: one indented rail per level. `data-depth` lets you cap or
+   restyle depth without any JS. */
+.hedgerow-replies {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  margin-left: 0.75rem;
+  padding-left: 1.25rem;
+  border-left: 2px solid var(--border);
+}
+
+/* Moderation labels — surfaced, never hidden. Filtering is the consumer's call
+   (Comments.Root `filter`); here we just badge them. */
+.hedgerow-labels {
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+}
+
+/* Deleted / blocked placeholders. */
+.hedgerow-fallback {
+  font-size: 0.9rem;
+  font-style: italic;
+  color: var(--muted);
+}
+.hedgerow-item[data-blocked] .hedgerow-head,
+.hedgerow-item[data-not-found] .hedgerow-head,
+.hedgerow-item[data-blocked] .hedgerow-foot,
+.hedgerow-item[data-not-found] .hedgerow-foot {
+  display: none;
+}

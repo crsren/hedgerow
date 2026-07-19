@@ -1,21 +1,23 @@
 ---
 import Base from "../layouts/Base.astro";
 import { loadSite, slugOf } from "../lib/site";
+import CommentThread from "../components/CommentThread";
 import type { DocumentRecord } from "@hedgerow/publish";
 
 export async function getStaticPaths() {
   const { documents } = await loadSite();
-  return documents.map(({ uri, value }) => ({
+  return documents.map(({ uri, value, bskyPostUri }) => ({
     params: { slug: slugOf(value) },
-    props: { doc: value, recordUri: uri },
+    props: { doc: value, recordUri: uri, bskyPostUri: bskyPostUri ?? null },
   }));
 }
 
 interface Props {
   doc: DocumentRecord;
   recordUri: string | null;
+  bskyPostUri: string | null;
 }
-const { doc, recordUri } = Astro.props;
+const { doc, recordUri, bskyPostUri } = Astro.props;
 
 // textContent is plaintext; the only structure it carries is paragraph breaks
 // (double newlines). Split those back into <p> elements — single newlines within
@@ -56,6 +58,17 @@ const dateFmt = new Intl.DateTimeFormat("en", {
     </div>
   </article>
 
+  {
+    bskyPostUri && (
+      <section class="comments" aria-labelledby="comments-heading">
+        <h2 id="comments-heading">Comments</h2>
+        {/* Client-hydrated island. The article above is 100% static HTML; only
+            this thread + the like count fetch from the AppView in the browser. */}
+        <CommentThread client:visible post={bskyPostUri} />
+      </section>
+    )
+  }
+
   <footer>
     <p class="muted">Rendered from a site.standard.document record</p>
   </footer>
@@ -81,6 +94,15 @@ const dateFmt = new Intl.DateTimeFormat("en", {
   }
   .body p {
     margin: 0 0 1.4rem;
+  }
+
+  .comments {
+    margin-top: 1rem;
+  }
+  .comments h2 {
+    font-size: 1.1rem;
+    letter-spacing: -0.01em;
+    margin: 0;
   }
 
   footer {
