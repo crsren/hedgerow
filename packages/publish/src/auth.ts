@@ -13,6 +13,8 @@ export interface Publisher {
   ): Promise<{ uri: string; cid: string }>;
   /** Existing record value, or null if absent — lets publishSite skip unchanged writes. */
   getRecord(collection: string, rkey: string): Promise<Record<string, unknown> | null>;
+  /** Delete a record. Used by prune to remove orphaned documents. */
+  deleteRecord(collection: string, rkey: string): Promise<void>;
 }
 
 /** Wrap an already-authenticated AtpAgent as a Publisher (used by tests + OAuth later). */
@@ -32,6 +34,9 @@ export function agentPublisher(agent: AtpAgent): Publisher {
       } catch {
         return null; // RecordNotFound (or transient error — worst case we re-put)
       }
+    },
+    async deleteRecord(collection, rkey) {
+      await agent.com.atproto.repo.deleteRecord({ repo: did, collection, rkey });
     },
   };
 }

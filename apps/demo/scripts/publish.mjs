@@ -4,6 +4,11 @@
 //   ATP_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx \
 //   pnpm --filter @hedgerow/demo run publish:pds
 //
+// Flags:
+//   --share  auto-create a canonical Bluesky share post for any post lacking a
+//            comment anchor, and use it as the document's bskyPostRef.
+//   --prune  delete document records for slugs no longer in ./posts.
+//
 // State (slug -> record rkey) persists to .publish-state.json so reruns target
 // the same records; unchanged posts are skipped (the `changed` flag).
 import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
@@ -28,6 +33,9 @@ const config = {
 
 const pdslsLink = (uri) => `https://pdsls.dev/${uri}`;
 
+// at://<did>/app.bsky.feed.post/<rkey> -> the public bsky.app permalink.
+const bskyPostLink = (did, uri) => `https://bsky.app/profile/${did}/post/${uri.split("/").pop()}`;
+
 function loadState() {
   if (existsSync(STATE_PATH)) {
     try {
@@ -48,6 +56,9 @@ async function main() {
     process.exit(1);
   }
 
+  const share = process.argv.includes("--share");
+  const prune = process.argv.includes("--prune");
+
   const posts = readdirSync(POSTS_DIR)
     .filter((f) => f.endsWith(".md"))
     .map((f) => parsePost(readFileSync(join(POSTS_DIR, f), "utf8"), f.replace(/\.md$/, "")));
@@ -60,7 +71,10 @@ async function main() {
     service: ATP_SERVICE, // undefined -> defaults to https://bsky.social
   });
 
-  const result = await publishSite(publisher, config, posts, loadState());
+  const result = await publishSite(publisher, config, posts, loadState(), {
+    ...(share ? { share: { enabled: true } } : {}),
+    prune,
+  });
   writeFileSync(STATE_PATH, JSON.stringify(result.state, null, 2) + "\n");
 
   console.log(`publication  ${result.publicationUri}`);
@@ -70,6 +84,25 @@ async function main() {
     console.log(`             ${doc.uri}`);
     console.log(`             ${pdslsLink(doc.uri)}`);
   }
+
+  const shares = Object.entries(result.state.shares ?? {});
+  if (shares.length) {
+    console.log(`\nShare posts:`);
+    for (const [slug, ref] of shares) {
+      console.log(`  ${slug}`);
+      console.log(`             ${bskyPostLink(publisher.did, ref.uri)}`);
+    }
+  }
+
+  if (result.pruned.length) {
+    console.log(`\nPruned (documents deleted): ${result.pruned.join(", ")}`);
+  }
+
+  if (result.warnings.length) {
+    console.log(`\nWarnings:`);
+    for (const w of result.warnings) console.log(`  - ${w}`);
+  }
+
   console.log(`\nState saved to ${STATE_PATH}`);
 }
 

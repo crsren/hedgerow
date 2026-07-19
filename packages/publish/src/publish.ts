@@ -11,15 +11,23 @@ import {
   type ParsedPost,
   type PublicationConfig,
 } from "./records.js";
-import { DOCUMENT_NSID, PUBLICATION_NSID } from "./types.js";
+import { DOCUMENT_NSID, PUBLICATION_NSID, type StrongRef } from "./types.js";
+
+const BSKY_POST_NSID = "app.bsky.feed.post";
 
 /** slug/singleton -> record key. Persist this (e.g. .publish-state.json) between runs. */
 export interface PublishState {
   publication: string | null;
   docs: Record<string, string>;
+  /**
+   * slug -> StrongRef of the canonical Bluesky share post auto-created for that
+   * document (SLIMS-62). Reused across runs so a post never gets a duplicate
+   * share. Backward-compatible: absent in older state files, defaulted to {}.
+   */
+  shares: Record<string, StrongRef>;
 }
 
-export const emptyState = (): PublishState => ({ publication: null, docs: {} });
+export const emptyState = (): PublishState => ({ publication: null, docs: {}, shares: {} });
 
 export interface PublishResult {
   publicationUri: string;
@@ -27,16 +35,41 @@ export interface PublishResult {
   /** Updated state — persist it so the next run reuses the same rkeys. */
   state: PublishState;
   /**
-   * Non-fatal problems that didn't abort the run — currently one per post whose
-   * `bskyPostUri` couldn't be resolved to a `bskyPostRef` (the document is still
-   * published, just without the comment anchor). Empty on a clean run.
+   * Non-fatal problems that didn't abort the run — a post whose `bskyPostUri`
+   * couldn't be resolved, a share post that failed to create, or a pruned
+   * document that couldn't be deleted (the run still succeeds, minus that one
+   * effect). Empty on a clean run.
    */
   warnings: string[];
+  /** Slugs whose document records were deleted this run by prune. Empty when prune is off. */
+  pruned: string[];
+}
+
+/** Auto-create a canonical Bluesky share post for documents lacking a comment anchor. */
+export interface ShareOptions {
+  enabled: true;
+  /**
+   * Override the share post text. Receives the parsed post and the canonical
+   * article URL. Default: `${post.title}\n\n${canonicalUrl}`.
+   */
+  text?: (post: ParsedPost, url: string) => string;
 }
 
 export interface PublishOptions {
   /** Passthrough for the bskyPostUri -> bskyPostRef resolver (pds override / fetch). */
   resolveOpts?: ResolveBskyPostRefOptions;
+  /**
+   * When enabled, mint a canonical `app.bsky.feed.post` for any document that
+   * has no explicit anchor (no bskyPostRef, no bskyPostUri) and no persisted
+   * share, then use that post as the document's `bskyPostRef` (SLIMS-62).
+   */
+  share?: ShareOptions;
+  /**
+   * When true, after publishing, delete document records for slugs in state
+   * that are no longer among the provided posts. Off by default. Never touches
+   * the publication record or the pruned docs' Bluesky share posts.
+   */
+  prune?: boolean;
 }
 
 function deepEqual(a: unknown, b: unknown): boolean {
@@ -80,8 +113,17 @@ export async function publishSite(
   state: PublishState = emptyState(),
   options: PublishOptions = {},
 ): Promise<PublishResult> {
-  const next: PublishState = { publication: state.publication, docs: { ...state.docs } };
+  const next: PublishState = {
+    publication: state.publication,
+    docs: { ...state.docs },
+    // Default to {} so state files predating the shares field load cleanly.
+    shares: { ...(state.shares ?? {}) },
+  };
   const warnings: string[] = [];
+
+  // Canonical site origin (trailing slash stripped, same as the publication record):
+  // origin + `/${slug}` is the article URL a share post links to.
+  const siteOrigin = config.url.replace(/\/+$/, "");
 
   const pubRkey = next.publication ?? TID.nextStr();
   const pub = await upsertIfChanged(
@@ -113,6 +155,34 @@ export async function publishSite(
       }
     }
 
+    // Auto-share: only for posts with no explicit anchor of any kind. An
+    // explicit bskyPostRef/bskyPostUri always wins over a persisted share, so
+    // a post that later gains one silently drops its auto-share (the old share
+    // post still exists on Bluesky; state just stops pointing at it here).
+    if (!bskyPostRef && !post.bskyPostUri) {
+      const persisted = next.shares[post.slug];
+      if (persisted) {
+        // Reuse the share created on a prior run — never mint a duplicate. This
+        // holds even when share isn't enabled this run, so the document keeps
+        // its anchor instead of flapping.
+        bskyPostRef = persisted;
+      } else if (options.share?.enabled) {
+        const canonicalUrl = `${siteOrigin}/${post.slug}`;
+        try {
+          bskyPostRef = await createSharePost(publisher, post, canonicalUrl, options.share);
+          next.shares[post.slug] = bskyPostRef;
+        } catch (err) {
+          // Share creation is best-effort: publish the document without the
+          // anchor and surface the reason rather than sinking the whole run.
+          warnings.push(
+            `could not create share post for "${post.slug}": ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      }
+    }
+
     const record = documentRecord({ ...post, bskyPostRef }, { siteUri: pub.uri });
     const res = await upsertIfChanged(
       publisher,
@@ -124,5 +194,65 @@ export async function publishSite(
     documents.push({ slug: post.slug, uri: res.uri, title: post.title, changed: res.changed });
   }
 
-  return { publicationUri: pub.uri, documents, state: next, warnings };
+  const pruned: string[] = [];
+  if (options.prune) {
+    const keep = new Set(posts.map((p) => p.slug));
+    // Union of docs + shares: a slug tracked in either but no longer published
+    // is an orphan. We delete its document record (if any) and stop tracking it
+    // in docs, but deliberately KEEP its share ref — the Bluesky conversation
+    // may still have value, so v1 never deletes a pruned doc's share post.
+    const known = new Set([...Object.keys(next.docs), ...Object.keys(next.shares)]);
+    for (const slug of known) {
+      if (keep.has(slug)) continue;
+      const rkey = next.docs[slug];
+      if (rkey) {
+        try {
+          await publisher.deleteRecord(DOCUMENT_NSID, rkey);
+        } catch (err) {
+          // Already-gone records are fine; warn rather than abort the run.
+          warnings.push(
+            `could not delete pruned document "${slug}" (${rkey}): ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+        delete next.docs[slug];
+        // Only slugs that actually had a document this run are reported: a
+        // kept share ref would otherwise re-report its slug on every prune.
+        pruned.push(slug);
+      }
+    }
+  }
+
+  return { publicationUri: pub.uri, documents, state: next, warnings, pruned };
+}
+
+/**
+ * Mint the canonical Bluesky share post for a document: an `app.bsky.feed.post`
+ * with an external embed pointing at the article URL. Returns its StrongRef,
+ * which becomes the document's `bskyPostRef` in the same run. No thumb blob in v1.
+ */
+async function createSharePost(
+  publisher: Publisher,
+  post: ParsedPost,
+  canonicalUrl: string,
+  share: ShareOptions,
+): Promise<StrongRef> {
+  const text = share.text?.(post, canonicalUrl) ?? `${post.title}\n\n${canonicalUrl}`;
+  const record = {
+    $type: BSKY_POST_NSID,
+    text,
+    createdAt: new Date().toISOString(),
+    embed: {
+      $type: "app.bsky.embed.external",
+      external: {
+        uri: canonicalUrl,
+        title: post.title,
+        description: post.description ?? "",
+      },
+    },
+  };
+  const rkey = TID.nextStr();
+  const res = await publisher.putRecord(BSKY_POST_NSID, rkey, record);
+  return { uri: res.uri, cid: res.cid };
 }

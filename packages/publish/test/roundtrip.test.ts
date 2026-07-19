@@ -6,9 +6,9 @@ import { TID } from "@atproto/common-web";
 import { TestNetworkNoAppView } from "@atproto/dev-env";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { agentPublisher } from "../src/auth.js";
-import { publishSite } from "../src/publish.js";
+import { publishSite, type PublishState } from "../src/publish.js";
 import { parsePost } from "../src/records.js";
-import { readSiteFromPds } from "../src/read.js";
+import { listRecords, readSiteFromPds } from "../src/read.js";
 
 const POST = `---
 title: "Back to Web One"
@@ -189,5 +189,231 @@ This post's anchor is missing.
     const readDoc = site.documents.find((d) => d.value.path === "/dangling-anchor");
     expect(readDoc).toBeDefined();
     expect(readDoc?.value.bskyPostRef).toBeUndefined();
+  });
+});
+
+// The share posts these tests mint share one PDS/account, so counts are compared
+// as deltas rather than absolutes.
+type FeedPost = {
+  embed?: { external?: { uri?: string; title?: string; description?: string } };
+};
+const CFG = { url: "https://crsren.com", name: "crsren" };
+
+describe("auto-share: minting a canonical Bluesky post", () => {
+  it("creates exactly one share post and anchors the document to it", async () => {
+    const publisher = agentPublisher(agent);
+    const post = parsePost(
+      `---
+title: "Shared Post"
+slug: shared-post
+publishedAt: 2026-07-19T10:00:00.000Z
+description: "A post that shares itself."
+---
+Body.
+`,
+      "shared-post",
+    );
+
+    const before = await listRecords<FeedPost>(pdsUrl, did, "app.bsky.feed.post");
+    const result = await publishSite(publisher, CFG, [post], undefined, {
+      share: { enabled: true },
+    });
+    const after = await listRecords<FeedPost>(pdsUrl, did, "app.bsky.feed.post");
+
+    // exactly one new app.bsky.feed.post
+    expect(after.length - before.length).toBe(1);
+
+    const canonicalUrl = "https://crsren.com/shared-post";
+    const share = after.find((r) => r.value.embed?.external?.uri === canonicalUrl);
+    expect(share).toBeDefined();
+    expect(share!.value.embed!.external!.title).toBe("Shared Post");
+
+    // state persisted the share ref
+    expect(result.state.shares["shared-post"]).toEqual({ uri: share!.uri, cid: share!.cid });
+
+    // the document's read-back bskyPostRef matches the share post's uri+cid
+    const site = await readSiteFromPds(pdsUrl, did);
+    const doc = site.documents.find((d) => d.value.path === "/shared-post");
+    expect(doc?.value.bskyPostRef).toEqual({ uri: share!.uri, cid: share!.cid });
+  });
+
+  it("reuses the persisted share on rerun — no duplicate, document unchanged", async () => {
+    const publisher = agentPublisher(agent);
+    const post = parsePost(
+      `---
+title: "Reshared Post"
+slug: reshare-post
+publishedAt: 2026-07-19T10:00:00.000Z
+---
+Body.
+`,
+      "reshare-post",
+    );
+
+    const first = await publishSite(publisher, CFG, [post], undefined, {
+      share: { enabled: true },
+    });
+    const before = await listRecords<FeedPost>(pdsUrl, did, "app.bsky.feed.post");
+    const second = await publishSite(publisher, CFG, [post], first.state, {
+      share: { enabled: true },
+    });
+    const after = await listRecords<FeedPost>(pdsUrl, did, "app.bsky.feed.post");
+
+    expect(after.length).toBe(before.length); // no second share post
+    expect(second.documents[0]!.changed).toBe(false);
+    expect(second.state.shares["reshare-post"]).toEqual(first.state.shares["reshare-post"]);
+  });
+
+  it("honors a custom share text function", async () => {
+    const publisher = agentPublisher(agent);
+    const post = parsePost(
+      `---
+title: "Custom Text Post"
+slug: custom-text-post
+publishedAt: 2026-07-19T10:00:00.000Z
+---
+Body.
+`,
+      "custom-text-post",
+    );
+
+    const result = await publishSite(publisher, CFG, [post], undefined, {
+      share: { enabled: true, text: (p, url) => `New: ${p.title} → ${url}` },
+    });
+
+    const ref = result.state.shares["custom-text-post"]!;
+    const rkey = ref.uri.split("/").pop()!;
+    const got = await agent.com.atproto.repo.getRecord({
+      repo: did,
+      collection: "app.bsky.feed.post",
+      rkey,
+    });
+    expect((got.data.value as { text: string }).text).toBe(
+      "New: Custom Text Post → https://crsren.com/custom-text-post",
+    );
+  });
+
+  it("does not create a share when the post has an explicit bskyPostUri", async () => {
+    const publisher = agentPublisher(agent);
+    const rkey = TID.nextStr();
+    const created = await agent.com.atproto.repo.putRecord({
+      repo: did,
+      collection: "app.bsky.feed.post",
+      rkey,
+      record: { $type: "app.bsky.feed.post", text: "explicit", createdAt: new Date().toISOString() },
+    });
+    const postUri = `at://${did}/app.bsky.feed.post/${rkey}`;
+    const post = parsePost(
+      `---
+title: "Explicitly Anchored"
+slug: explicit-anchor
+publishedAt: 2026-07-19T10:00:00.000Z
+bskyPostUri: ${postUri}
+---
+Body.
+`,
+      "explicit-anchor",
+    );
+
+    // measured after we minted the explicit post, so any delta is share-created
+    const before = await listRecords<FeedPost>(pdsUrl, did, "app.bsky.feed.post");
+    const result = await publishSite(publisher, CFG, [post], undefined, {
+      share: { enabled: true },
+      resolveOpts: { pds: pdsUrl },
+    });
+    const after = await listRecords<FeedPost>(pdsUrl, did, "app.bsky.feed.post");
+
+    expect(after.length - before.length).toBe(0); // no share minted
+    expect(result.state.shares["explicit-anchor"]).toBeUndefined();
+
+    const site = await readSiteFromPds(pdsUrl, did);
+    const doc = site.documents.find((d) => d.value.path === "/explicit-anchor");
+    expect(doc?.value.bskyPostRef).toEqual({ uri: postUri, cid: created.data.cid });
+  });
+
+  it("loads old state without a shares field", async () => {
+    const publisher = agentPublisher(agent);
+    const post = parsePost(
+      `---
+title: "Legacy State Post"
+slug: legacy-state
+publishedAt: 2026-07-19T10:00:00.000Z
+---
+Body.
+`,
+      "legacy-state",
+    );
+
+    const first = await publishSite(publisher, CFG, [post]);
+    // simulate a state file written before the shares field existed
+    const legacy = { publication: first.state.publication, docs: first.state.docs };
+    const second = await publishSite(publisher, CFG, [post], legacy as unknown as PublishState);
+
+    expect(second.documents[0]!.changed).toBe(false);
+    expect(second.state.shares).toEqual({});
+  });
+});
+
+describe("prune: removing orphaned documents", () => {
+  it("deletes documents no longer present, cleans state, leaves the survivor", async () => {
+    const publisher = agentPublisher(agent);
+    const keep = parsePost(
+      `---
+title: "Prune Keep"
+slug: prune-keep
+publishedAt: 2026-07-19T10:00:00.000Z
+---
+Kept.
+`,
+      "prune-keep",
+    );
+    const orphan = parsePost(
+      `---
+title: "Prune Orphan"
+slug: prune-orphan
+publishedAt: 2026-07-19T10:00:00.000Z
+---
+Orphaned.
+`,
+      "prune-orphan",
+    );
+
+    const first = await publishSite(publisher, CFG, [keep, orphan], undefined, {
+      share: { enabled: true },
+    });
+    expect(first.pruned).toEqual([]); // prune off by default
+
+    const second = await publishSite(publisher, CFG, [keep], first.state, { prune: true });
+
+    expect(second.pruned).toEqual(["prune-orphan"]);
+    expect(second.state.docs["prune-orphan"]).toBeUndefined();
+    expect(second.state.docs["prune-keep"]).toBeDefined();
+    // the pruned doc's share ref is deliberately retained
+    expect(second.state.shares["prune-orphan"]).toBeDefined();
+
+    const site = await readSiteFromPds(pdsUrl, did);
+    expect(site.documents.find((d) => d.value.path === "/prune-orphan")).toBeUndefined();
+    expect(site.documents.find((d) => d.value.path === "/prune-keep")).toBeDefined();
+  });
+
+  it("prunes nothing when every state slug is still published", async () => {
+    const publisher = agentPublisher(agent);
+    const post = parsePost(
+      `---
+title: "Prune Noop"
+slug: prune-noop
+publishedAt: 2026-07-19T10:00:00.000Z
+---
+Body.
+`,
+      "prune-noop",
+    );
+
+    const first = await publishSite(publisher, CFG, [post]);
+    const second = await publishSite(publisher, CFG, [post], first.state, { prune: true });
+
+    expect(second.pruned).toEqual([]);
+    const site = await readSiteFromPds(pdsUrl, did);
+    expect(site.documents.find((d) => d.value.path === "/prune-noop")).toBeDefined();
   });
 });
