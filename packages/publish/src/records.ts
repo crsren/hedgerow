@@ -24,8 +24,15 @@ export interface ParsedPost {
   tags?: string[];
   /** Raw markdown body (kept for local rich rendering). */
   body: string;
-  /** Optional Bluesky post anchor for comments (SLIMS-55). */
+  /** Optional Bluesky post anchor for comments, as a resolved StrongRef (SLIMS-55). */
   bskyPostRef?: StrongRef;
+  /**
+   * Optional Bluesky post anchor as a bare at-uri or bsky.app URL (SLIMS-55).
+   * The authoring convention: the canonical post's share link. `publishSite`
+   * resolves it to a `bskyPostRef` StrongRef at publish time. If both are set,
+   * the explicit `bskyPostRef` wins.
+   */
+  bskyPostUri?: string;
 }
 
 /** Parse a markdown file (frontmatter + body) into a ParsedPost. */
@@ -41,6 +48,7 @@ export function parsePost(markdown: string, fallbackSlug: string): ParsedPost {
     ...(Array.isArray(data.tags) ? { tags: data.tags.map(String) } : {}),
     body: content.trim(),
     ...(data.bskyPostRef ? { bskyPostRef: data.bskyPostRef as StrongRef } : {}),
+    ...(data.bskyPostUri ? { bskyPostUri: String(data.bskyPostUri) } : {}),
   };
 }
 

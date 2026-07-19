@@ -29,12 +29,10 @@ const LOCAL_CONFIG: PublicationConfig = {
 };
 
 /**
- * A loaded document plus the interim `bskyPostUri` comment anchor (SLIMS-55).
- *
- * `bskyPostUri` is read straight from frontmatter here, NOT via the publish
- * package: `parsePost` only recognises a full `bskyPostRef` StrongRef (uri+cid),
- * whereas the interim demo convention is a bare at-uri / bsky.app URL string.
- * Rather than touch `@hedgerow/publish`, the demo reads that one field itself.
+ * A loaded document plus its `bskyPostUri` comment anchor (SLIMS-55) — the
+ * at-uri / bsky.app URL of the Bluesky post that hosts the thread. In local mode
+ * it comes straight off `parsePost` (network-free — we do NOT resolve it to a
+ * StrongRef at build time); in live mode it's the record's own `bskyPostRef.uri`.
  */
 export interface LoadedDocument {
   uri: string | null;
@@ -48,17 +46,10 @@ export interface LoadedSite {
   documents: LoadedDocument[];
 }
 
-/** Pull `bskyPostUri` out of a markdown file's YAML frontmatter block. */
-function readBskyPostUri(markdown: string): string | undefined {
-  const frontmatter = /^---\r?\n([\s\S]*?)\r?\n---/.exec(markdown)?.[1];
-  if (!frontmatter) return undefined;
-  const match = /^\s*bskyPostUri:\s*["']?([^"'\n]+?)["']?\s*$/m.exec(frontmatter);
-  return match?.[1]?.trim();
-}
-
-/** Shape local markdown into records in memory, then hand back a Site — never
- * touching the raw frontmatter downstream except for the interim comment anchor.
- * Local records have no at:// uri (they don't live in a PDS), hence uri: null. */
+/** Shape local markdown into records in memory, then hand back a Site — the
+ * comment anchor rides along as `parsePost`'s bare `bskyPostUri` (unresolved, so
+ * local mode stays network-free). Local records have no at:// uri (they don't
+ * live in a PDS), hence uri: null. */
 function loadLocalSite(): LoadedSite {
   const publication = publicationRecord(LOCAL_CONFIG);
   const documents = readdirSync(POSTS_DIR)
@@ -66,11 +57,10 @@ function loadLocalSite(): LoadedSite {
     .map((file): LoadedDocument => {
       const md = readFileSync(join(POSTS_DIR, file), "utf8");
       const post = parsePost(md, file.replace(/\.md$/, ""));
-      const bskyPostUri = readBskyPostUri(md);
       return {
         uri: null,
         value: documentRecord(post, { siteUri: publication.url }),
-        ...(bskyPostUri ? { bskyPostUri } : {}),
+        ...(post.bskyPostUri ? { bskyPostUri: post.bskyPostUri } : {}),
       };
     })
     .sort(

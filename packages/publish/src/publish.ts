@@ -3,6 +3,7 @@
 // unchanged records are skipped entirely (so reruns don't rewrite content or
 // bump updatedAt — updatedAt only moves when a post actually changed).
 import { TID } from "@atproto/common-web";
+import { resolveBskyPostRef, type ResolveBskyPostRefOptions } from "./anchor.js";
 import type { Publisher } from "./auth.js";
 import {
   documentRecord,
@@ -25,6 +26,17 @@ export interface PublishResult {
   documents: { slug: string; uri: string; title: string; changed: boolean }[];
   /** Updated state — persist it so the next run reuses the same rkeys. */
   state: PublishState;
+  /**
+   * Non-fatal problems that didn't abort the run — currently one per post whose
+   * `bskyPostUri` couldn't be resolved to a `bskyPostRef` (the document is still
+   * published, just without the comment anchor). Empty on a clean run.
+   */
+  warnings: string[];
+}
+
+export interface PublishOptions {
+  /** Passthrough for the bskyPostUri -> bskyPostRef resolver (pds override / fetch). */
+  resolveOpts?: ResolveBskyPostRefOptions;
 }
 
 function deepEqual(a: unknown, b: unknown): boolean {
@@ -66,8 +78,10 @@ export async function publishSite(
   config: PublicationConfig,
   posts: ParsedPost[],
   state: PublishState = emptyState(),
+  options: PublishOptions = {},
 ): Promise<PublishResult> {
   const next: PublishState = { publication: state.publication, docs: { ...state.docs } };
+  const warnings: string[] = [];
 
   const pubRkey = next.publication ?? TID.nextStr();
   const pub = await upsertIfChanged(
@@ -81,7 +95,25 @@ export async function publishSite(
   const documents: PublishResult["documents"] = [];
   for (const post of posts) {
     const rkey = next.docs[post.slug] ?? TID.nextStr();
-    const record = documentRecord(post, { siteUri: pub.uri });
+
+    // An explicit bskyPostRef always wins; otherwise resolve the interim
+    // bskyPostUri to a StrongRef. Resolution failure is non-fatal: the post is
+    // published without an anchor and the reason is surfaced as a warning, so
+    // one dead post link can't sink the whole publish.
+    let bskyPostRef = post.bskyPostRef;
+    if (!bskyPostRef && post.bskyPostUri) {
+      try {
+        bskyPostRef = await resolveBskyPostRef(post.bskyPostUri, options.resolveOpts);
+      } catch (err) {
+        warnings.push(
+          `could not resolve bskyPostRef for "${post.slug}" (${post.bskyPostUri}): ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
+    const record = documentRecord({ ...post, bskyPostRef }, { siteUri: pub.uri });
     const res = await upsertIfChanged(
       publisher,
       DOCUMENT_NSID,
@@ -92,5 +124,5 @@ export async function publishSite(
     documents.push({ slug: post.slug, uri: res.uri, title: post.title, changed: res.changed });
   }
 
-  return { publicationUri: pub.uri, documents, state: next };
+  return { publicationUri: pub.uri, documents, state: next, warnings };
 }

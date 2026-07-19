@@ -38,19 +38,25 @@ export async function listRecords<T>(
   return out;
 }
 
+/** Resolve a handle to its DID (real network: bsky resolver). A `did:` passes through. */
+export async function resolveDid(
+  identifier: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<string> {
+  if (identifier.startsWith("did:")) return identifier;
+  const r = await fetchImpl(
+    `https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(identifier)}`,
+  );
+  if (!r.ok) throw new Error(`resolveHandle failed: ${r.status}`);
+  return ((await r.json()) as { did: string }).did;
+}
+
 /** Resolve a handle/DID to its DID + PDS endpoint (real network: bsky resolver + PLC). */
 export async function resolvePds(
   identifier: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<{ did: string; pds: string }> {
-  let did = identifier;
-  if (!identifier.startsWith("did:")) {
-    const r = await fetchImpl(
-      `https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(identifier)}`,
-    );
-    if (!r.ok) throw new Error(`resolveHandle failed: ${r.status}`);
-    did = ((await r.json()) as { did: string }).did;
-  }
+  const did = await resolveDid(identifier, fetchImpl);
   const doc = (await (await fetchImpl(`https://plc.directory/${did}`)).json()) as {
     service?: { id: string; serviceEndpoint: string }[];
   };

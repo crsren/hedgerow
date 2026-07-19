@@ -38,6 +38,40 @@ describe("parsePost", () => {
   it("throws without a title", () => {
     expect(() => parsePost("---\npublishedAt: 2026-01-01\n---\nx", "s")).toThrow(/title/);
   });
+
+  it("reads a bare bskyPostUri from frontmatter", () => {
+    const p = parsePost(
+      `---
+title: T
+publishedAt: 2026-01-01
+bskyPostUri: https://bsky.app/profile/chris.test/post/3abc
+---
+body`,
+      "s",
+    );
+    expect(p.bskyPostUri).toBe("https://bsky.app/profile/chris.test/post/3abc");
+    expect(p.bskyPostRef).toBeUndefined();
+  });
+
+  it("keeps an explicit bskyPostRef alongside a bskyPostUri (ref wins downstream)", () => {
+    const p = parsePost(
+      `---
+title: T
+publishedAt: 2026-01-01
+bskyPostUri: at://did:plc:x/app.bsky.feed.post/3abc
+bskyPostRef:
+  uri: at://did:plc:x/app.bsky.feed.post/3abc
+  cid: bafyexplicit
+---
+body`,
+      "s",
+    );
+    expect(p.bskyPostUri).toBe("at://did:plc:x/app.bsky.feed.post/3abc");
+    expect(p.bskyPostRef).toEqual({
+      uri: "at://did:plc:x/app.bsky.feed.post/3abc",
+      cid: "bafyexplicit",
+    });
+  });
 });
 
 describe("publicationRecord", () => {

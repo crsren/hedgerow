@@ -2,6 +2,7 @@
 // in-process PDS (@atproto/dev-env). No Docker, no account, no domain, no
 // credentials. Proves the write path that the prototype could never run.
 import { AtpAgent } from "@atproto/api";
+import { TID } from "@atproto/common-web";
 import { TestNetworkNoAppView } from "@atproto/dev-env";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { agentPublisher } from "../src/auth.js";
@@ -115,5 +116,78 @@ describe("publish -> read round trip (local PDS)", () => {
     const doc = site.documents.find((d) => d.value.path === "/changing-post");
     expect(doc?.value.textContent).toBe("Edited body.");
     expect(doc?.value.updatedAt).toBeDefined();
+  });
+});
+
+describe("bskyPostUri -> bskyPostRef resolution during publish", () => {
+  it("resolves a real post's at-uri to a StrongRef with the actual cid", async () => {
+    const publisher = agentPublisher(agent);
+
+    // Create a real app.bsky.feed.post on the same PDS; putRecord returns its cid.
+    const rkey = TID.nextStr();
+    const created = await agent.com.atproto.repo.putRecord({
+      repo: did,
+      collection: "app.bsky.feed.post",
+      rkey,
+      record: { $type: "app.bsky.feed.post", text: "canonical thread", createdAt: new Date().toISOString() },
+    });
+    const postUri = `at://${did}/app.bsky.feed.post/${rkey}`;
+
+    const post = parsePost(
+      `---
+title: "Anchored Post"
+slug: anchored-post
+publishedAt: 2026-07-19T10:00:00.000Z
+bskyPostUri: ${postUri}
+---
+Comments live on Bluesky.
+`,
+      "anchored-post",
+    );
+
+    // resolveOpts.pds points the resolver at the local PDS (no network DID-doc lookup).
+    const result = await publishSite(
+      publisher,
+      { url: "https://crsren.com", name: "crsren" },
+      [post],
+      undefined,
+      { resolveOpts: { pds: pdsUrl } },
+    );
+    expect(result.warnings).toEqual([]);
+
+    const site = await readSiteFromPds(pdsUrl, did);
+    const readDoc = site.documents.find((d) => d.value.path === "/anchored-post");
+    expect(readDoc?.value.bskyPostRef).toEqual({ uri: postUri, cid: created.data.cid });
+  });
+
+  it("does not abort the publish when a bskyPostUri can't be resolved", async () => {
+    const publisher = agentPublisher(agent);
+    const post = parsePost(
+      `---
+title: "Dangling Anchor"
+slug: dangling-anchor
+publishedAt: 2026-07-19T10:00:00.000Z
+bskyPostUri: at://${did}/app.bsky.feed.post/${TID.nextStr()}
+---
+This post's anchor is missing.
+`,
+      "dangling-anchor",
+    );
+
+    const result = await publishSite(
+      publisher,
+      { url: "https://crsren.com", name: "crsren" },
+      [post],
+      undefined,
+      { resolveOpts: { pds: pdsUrl } },
+    );
+
+    // published, but with a warning and no ref
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain("dangling-anchor");
+    const site = await readSiteFromPds(pdsUrl, did);
+    const readDoc = site.documents.find((d) => d.value.path === "/dangling-anchor");
+    expect(readDoc).toBeDefined();
+    expect(readDoc?.value.bskyPostRef).toBeUndefined();
   });
 });
