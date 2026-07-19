@@ -1,0 +1,15 @@
+node_modules/
+dist/
+.turbo/
+.astro/
+*.tsbuildinfo
+
+# local publish state (slug -> record rkey); real sites commit their own
+.publish-state.json
+
+# secrets / local env — never commit app passwords
+.env
+.env.*
+!.env.example
+
+.DS_Store

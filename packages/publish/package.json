@@ -1,0 +1,41 @@
+{
+  "name": "@hedgerow/publish",
+  "version": "0.0.1",
+  "description": "Publish markdown posts as standard.site atproto records to a PDS.",
+  "keywords": ["atproto", "at-protocol", "standard.site", "indieweb", "publishing"],
+  "homepage": "https://github.com/crsren/hedgerow/tree/main/packages/publish",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "src", "lexicons"],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@atproto/api": "^0.20.0",
+    "@atproto/common-web": "^0.4.0",
+    "gray-matter": "^4.0.3"
+  },
+  "devDependencies": {
+    "@atproto/dev-env": "^0.3.140",
+    "@atproto/lexicon": "^0.7.7",
+    "@hedgerow/tsconfig": "workspace:*",
+    "@types/node": "^22.10.2",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
