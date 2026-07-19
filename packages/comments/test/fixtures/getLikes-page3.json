@@ -1,0 +1,41 @@
+{
+  "uri": "at://did:plc:6kos45lixtga3pdwuncvh32x/app.bsky.feed.post/3mqc36slinc2m",
+  "likes": [
+    {
+      "actor": {
+        "did": "did:plc:swj3i25kn66pwdtnwjhlxoia-p3-0",
+        "handle": "speedyg0y.bsky.social",
+        "displayName": "",
+        "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:swj3i25kn66pwdtnwjhlxoia/bafkreic4h4aqmksm7wrt6gzatl2uil6mijd7ewpz2rn2tgxtoxazwsbs5y",
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers"
+          }
+        },
+        "labels": [],
+        "createdAt": "2025-04-14T20:06:13.075Z",
+        "indexedAt": "2025-04-14T20:06:13.075Z"
+      },
+      "createdAt": "2026-07-19T16:58:40.232Z",
+      "indexedAt": "2026-07-19T16:58:40.232Z"
+    },
+    {
+      "actor": {
+        "did": "did:plc:pehcxzfcqcatjr6gblgivbuc-p3-1",
+        "handle": "pbararipe.bsky.social",
+        "displayName": "",
+        "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:pehcxzfcqcatjr6gblgivbuc/bafkreicqyig5fsr5d67hvtiyaalkucwd5imv7qbv2ldhia4xmpdjoc2yme",
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers"
+          }
+        },
+        "labels": [],
+        "createdAt": "2024-08-30T21:11:18.041Z",
+        "indexedAt": "2024-08-30T21:11:18.041Z"
+      },
+      "createdAt": "2026-07-19T16:47:11.419Z",
+      "indexedAt": "2026-07-19T16:47:11.419Z"
+    }
+  ]
+}

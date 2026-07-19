@@ -1,0 +1,119 @@
+{
+  "likes": [
+    {
+      "actor": {
+        "did": "did:plc:6koipsuzar2d3eeqkzuko4pj",
+        "handle": "dah1234.bsky.social",
+        "displayName": "",
+        "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:6koipsuzar2d3eeqkzuko4pj/bafkreig3st5iy5zo4dfpgqpxynzo3nkesrvfopeblrt54wi3qocubmrjuq",
+        "associated": {
+          "chat": {
+            "allowIncoming": "all"
+          },
+          "activitySubscription": {
+            "allowSubscriptions": "followers"
+          }
+        },
+        "labels": [
+          {
+            "src": "did:plc:6koipsuzar2d3eeqkzuko4pj",
+            "uri": "at://did:plc:6koipsuzar2d3eeqkzuko4pj/app.bsky.actor.profile/self",
+            "cid": "bafyreibi4tylf4cotjssui7idtlhtini4vie6lvccxnte4kymkd44ndyae",
+            "val": "!no-unauthenticated",
+            "cts": "2024-11-13T21:09:21.972Z"
+          }
+        ],
+        "createdAt": "2024-11-13T21:09:24.275Z",
+        "description": "Supporter of Ukraine. Came to Bluesky because I don't trust or like Elon. Fully closed my Xitter account and deleted the app.\n#SlavaUkraine",
+        "indexedAt": "2025-12-31T07:16:04.625Z"
+      },
+      "createdAt": "2026-07-19T18:36:21.199Z",
+      "indexedAt": "2026-07-19T18:36:21.199Z"
+    },
+    {
+      "actor": {
+        "did": "did:plc:sdomuegw6smznvj2cwiotvhz",
+        "handle": "fptrem33.bsky.social",
+        "displayName": "",
+        "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:sdomuegw6smznvj2cwiotvhz/bafkreiaaqwrz7643iwipfgw7haiy462sukuhjdzqf3lr2nzz6b4qgclk4a",
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers"
+          }
+        },
+        "labels": [],
+        "createdAt": "2026-06-12T16:48:44.957Z",
+        "indexedAt": "2026-06-12T16:49:14.959Z"
+      },
+      "createdAt": "2026-07-19T18:06:16.917Z",
+      "indexedAt": "2026-07-19T18:06:16.917Z"
+    },
+    {
+      "actor": {
+        "did": "did:plc:sivi6e2tklzn6g7vuha63v77",
+        "handle": "jeffbiscuits.bsky.social",
+        "displayName": "",
+        "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:sivi6e2tklzn6g7vuha63v77/bafkreihrl5fvw32hlyz2arhmbludzg67qqatsx5ylv5gzl7e7nd7gnpm4u",
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers"
+          }
+        },
+        "labels": [],
+        "createdAt": "2025-12-20T18:35:49.424Z",
+        "indexedAt": "2025-12-20T18:36:48.626Z"
+      },
+      "createdAt": "2026-07-19T18:01:10.832Z",
+      "indexedAt": "2026-07-19T18:01:10.832Z"
+    },
+    {
+      "actor": {
+        "did": "did:plc:pj5vgcebbi6shqj6zapminia",
+        "handle": "drawbu.dev",
+        "displayName": "Clément",
+        "pronouns": "he/him",
+        "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:pj5vgcebbi6shqj6zapminia/bafkreie4daetchqcz5nnfepq2thbwwgovjr75vgkz65icv25uyeui5lule",
+        "associated": {
+          "chat": {
+            "allowIncoming": "none",
+            "allowGroupInvites": "none"
+          },
+          "activitySubscription": {
+            "allowSubscriptions": "followers"
+          },
+          "germ": {
+            "showButtonTo": "usersIFollow",
+            "messageMeUrl": "https://landing.ger.mx/newUser"
+          }
+        },
+        "labels": [],
+        "createdAt": "2024-10-29T18:13:01.129Z",
+        "description": "frenchie in SF - nix/jj advocate\nhttps://drawbu.dev",
+        "indexedAt": "2026-05-07T09:43:19.364Z"
+      },
+      "createdAt": "2026-07-19T17:47:18.805Z",
+      "indexedAt": "2026-07-19T17:47:18.805Z"
+    },
+    {
+      "actor": {
+        "did": "did:plc:wib6d36xidbjvnayiyz4tz2x",
+        "handle": "riverdancewerewolf.bsky.social",
+        "displayName": "SeymourButtz",
+        "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:wib6d36xidbjvnayiyz4tz2x/bafkreigyrbmtjv2qa2va4adpkmsdazboxkq6xfdeomgman76pcplhrczgm",
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers"
+          }
+        },
+        "labels": [],
+        "createdAt": "2026-03-12T06:36:37.254Z",
+        "description": "Family Guy apologist, member of the Autism Spectrum, VOTE BLUE, RESIST FASCISM, Puppy petter\n\nABSOLUTELY NO CONSERVATIVES, FASCISTS, AI BROS, CRYPTO INVESTORS, SOUTH PARK EUPHORIA AND OASIS FANS.",
+        "indexedAt": "2026-06-25T10:57:41.361Z"
+      },
+      "createdAt": "2026-07-19T17:40:43.286Z",
+      "indexedAt": "2026-07-19T17:40:43.286Z"
+    }
+  ],
+  "cursor": "2026-07-19T17:40:43.286Z",
+  "uri": "at://did:plc:6kos45lixtga3pdwuncvh32x/app.bsky.feed.post/3mqc36slinc2m"
+}

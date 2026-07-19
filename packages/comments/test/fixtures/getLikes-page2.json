@@ -1,0 +1,83 @@
+{
+  "likes": [
+    {
+      "actor": {
+        "did": "did:plc:swj3i25kn66pwdtnwjhlxoia",
+        "handle": "speedyg0y.bsky.social",
+        "displayName": "",
+        "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:swj3i25kn66pwdtnwjhlxoia/bafkreic4h4aqmksm7wrt6gzatl2uil6mijd7ewpz2rn2tgxtoxazwsbs5y",
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers"
+          }
+        },
+        "labels": [],
+        "createdAt": "2025-04-14T20:06:13.075Z",
+        "indexedAt": "2025-04-14T20:06:13.075Z"
+      },
+      "createdAt": "2026-07-19T16:58:40.232Z",
+      "indexedAt": "2026-07-19T16:58:40.232Z"
+    },
+    {
+      "actor": {
+        "did": "did:plc:pehcxzfcqcatjr6gblgivbuc",
+        "handle": "pbararipe.bsky.social",
+        "displayName": "",
+        "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:pehcxzfcqcatjr6gblgivbuc/bafkreicqyig5fsr5d67hvtiyaalkucwd5imv7qbv2ldhia4xmpdjoc2yme",
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers"
+          }
+        },
+        "labels": [],
+        "createdAt": "2024-08-30T21:11:18.041Z",
+        "indexedAt": "2024-08-30T21:11:18.041Z"
+      },
+      "createdAt": "2026-07-19T16:47:11.419Z",
+      "indexedAt": "2026-07-19T16:47:11.419Z"
+    },
+    {
+      "actor": {
+        "did": "did:plc:mehhrvuowt5ijp6i5tpyxnqo",
+        "handle": "ryanreed.bsky.social",
+        "displayName": "Ryan Reed",
+        "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:mehhrvuowt5ijp6i5tpyxnqo/bafkreidwjlsevyobizneaofnvf6mr7bm6zszxjg5gr2iwxp26uczceytky",
+        "associated": {
+          "chat": {
+            "allowIncoming": "following"
+          },
+          "activitySubscription": {
+            "allowSubscriptions": "followers"
+          }
+        },
+        "labels": [],
+        "createdAt": "2023-10-20T16:32:27.058Z",
+        "description": "Political scientist specializing in political theory. \"Justice Across Generations\" with @challenbrook.bsky.social out NOW via Palgrave Macmillan. Views solely my own.🏳️‍🌈\n\nAssociate professor at a small midwestern university | UC Davis PhD. \n(he/him)",
+        "indexedAt": "2026-03-29T13:08:05.368Z"
+      },
+      "createdAt": "2026-07-19T16:00:59.230Z",
+      "indexedAt": "2026-07-19T16:00:59.230Z"
+    },
+    {
+      "actor": {
+        "did": "did:plc:3swgxpv5yc4qnxsu7ykvv2kn",
+        "handle": "vega0np4wz0ffical.bsky.social",
+        "displayName": "Vega0np4wzOfficalBlueSky",
+        "avatar": "https://cdn.bsky.app/img/avatar/plain/did:plc:3swgxpv5yc4qnxsu7ykvv2kn/bafkreiamkye6dcssadhculrv7zb2qwu72xbqr6bjsinoblhfq2sgnzw3ny",
+        "associated": {
+          "activitySubscription": {
+            "allowSubscriptions": "followers"
+          }
+        },
+        "labels": [],
+        "createdAt": "2026-07-10T18:05:49.564Z",
+        "description": "Hello I’m Vegs or Ash if yk me from twitch! I’m and artist and YouTuber.\nI post my yt edits on here sometimes but I’ll be posting a bunch of art and just stuff about my day.",
+        "indexedAt": "2026-07-10T18:26:26.965Z"
+      },
+      "createdAt": "2026-07-19T15:34:57.052Z",
+      "indexedAt": "2026-07-19T15:34:57.052Z"
+    }
+  ],
+  "cursor": "2026-07-19T15:34:57.052Z",
+  "uri": "at://did:plc:6kos45lixtga3pdwuncvh32x/app.bsky.feed.post/3mqc36slinc2m"
+}

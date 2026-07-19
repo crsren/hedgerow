@@ -1,0 +1,16 @@
+{
+  // This package ships to browsers AND node, so it extends the shared base and
+  // pulls in the DOM lib (for fetch/Response/URL) alongside node types (for the
+  // live-smoke test's process.env). No framework — plain isomorphic TS.
+  "extends": "@hedgerow/tsconfig/base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "types": ["node"],
+    "rootDir": ".",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*", "test/**/*"]
+}
