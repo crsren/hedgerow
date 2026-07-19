@@ -1,7 +1,7 @@
-// Pluggable write auth. v0 is app-password; atproto OAuth will implement the same
-// Publisher interface later, so callers (publishSite) never change.
-import { AtpAgent } from "@atproto/api";
-import { resolvePds } from "./read.js";
+// Pluggable write auth. Publishing authenticates via atproto OAuth (see
+// oauth.ts); callers only ever see the Publisher interface, so publishSite
+// never cares how you logged in.
+import type { Agent } from "@atproto/api";
 
 /** Minimal write surface publishSite needs — decouples it from how you authed. */
 export interface Publisher {
@@ -17,9 +17,14 @@ export interface Publisher {
   deleteRecord(collection: string, rkey: string): Promise<void>;
 }
 
-/** Wrap an already-authenticated AtpAgent as a Publisher (used by tests + OAuth later). */
-export function agentPublisher(agent: AtpAgent): Publisher {
-  const did = agent.session?.did;
+/**
+ * Wrap an already-authenticated {@link Agent} as a Publisher. Works for any
+ * `Agent` subclass: the `AtpAgent` used in tests and the OAuth-session-backed
+ * `Agent` that `oauthPublisher` builds both expose `.did` and the
+ * `com.atproto.repo.*` methods, so a single adapter covers both.
+ */
+export function agentPublisher(agent: Agent): Publisher {
+  const did = agent.did;
   if (!did) throw new Error("agentPublisher: agent has no active session (not logged in)");
   return {
     did,
@@ -39,24 +44,4 @@ export function agentPublisher(agent: AtpAgent): Publisher {
       await agent.com.atproto.repo.deleteRecord({ repo: did, collection, rkey });
     },
   };
-}
-
-export interface AppPasswordOptions {
-  identifier: string;
-  /** An app password (Bluesky → Settings → App Passwords), NEVER the account password. */
-  password: string;
-  /**
-   * PDS endpoint override (mainly for tests/local PDS). When omitted, the
-   * identifier's DID document is resolved and its #atproto_pds endpoint is
-   * used — never a hardcoded bsky.social, so self-hosted PDS accounts work.
-   */
-  service?: string;
-}
-
-/** Log in with an app password and return a Publisher. */
-export async function appPasswordPublisher(opts: AppPasswordOptions): Promise<Publisher> {
-  const service = opts.service ?? (await resolvePds(opts.identifier)).pds;
-  const agent = new AtpAgent({ service });
-  await agent.login({ identifier: opts.identifier, password: opts.password });
-  return agentPublisher(agent);
 }

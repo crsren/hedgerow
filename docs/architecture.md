@@ -6,9 +6,18 @@ Design notes for the Hedgerow monorepo. Kept brief; the source is the source of 
 
 The two halves of the toolkit — writing records and reading the social layer — stay decoupled.
 
-- **The read side must never depend on the publish side.** A site that only renders comments and likes should pull in none of `@hedgerow/publish`'s write path (app-password auth, `@atproto/api` agents, markdown parsing). Read and write are separate concerns with separate blast radii.
+- **The read side must never depend on the publish side.** A site that only renders comments and likes should pull in none of `@hedgerow/publish`'s write path (OAuth login, `@atproto/api` agents, markdown parsing). Read and write are separate concerns with separate blast radii.
 - **The comments core is framework-agnostic.** `@hedgerow/comments` (planned) does the reading — resolve a post, page its replies and likes off the AppView, shape them into a tree — with no React, no DOM, no framework import.
 - **`@hedgerow/react` and `@hedgerow/embed` are thin wrappers over that core.** They own rendering and interaction only; every fetch/transform decision lives in the core, so all surfaces stay behaviourally identical. React components follow Base UI principles (headless, unstyled, composable). The embed web component is a later wrapper over the same core.
+
+## Auth
+
+Publishing authenticates through one pluggable seam — the `Publisher` interface (`did` + `putRecord`/`getRecord`/`deleteRecord`) in `auth.ts`. `agentPublisher` adapts any `@atproto/api` `Agent` to it, so the same three methods back both the in-process test agent and a real OAuth session.
+
+- **atproto OAuth is the only auth path.** `oauthPublisher` (`oauth.ts`) is the single way to authenticate a real publish — there is no credential- or token-based alternative. It restores a cached session if one exists, otherwise runs the login and persists the result.
+- **CLI login is the loopback (native) flow.** atproto defines a client id of the form `http://localhost?scope=…&redirect_uri=…` for local clients — the authorization server synthesises the client metadata from that id, so there's no hosted client-metadata document and no client secret. We stand up a throwaway HTTP server on `127.0.0.1:<port>`, open the browser to the authorization URL, and catch the redirect there. The session (and transient auth state) persist through a small JSON file store (`store.ts`, default `~/.config/hedgerow`), and tokens refresh silently on restore.
+- **A browser OAuth flow comes later for the prepared app.** The same `Publisher` seam will front an in-app browser OAuth login (hosted client metadata) when the packaged app ships; only the client-metadata source and the redirect handling change, not `publishSite`.
+- **No headless publish path — by design.** A record write always requires a human to complete the browser login once. There is intentionally no username/password or token-env shortcut: after the first login the cached session makes reruns non-interactive, which is the only "unattended" mode we support.
 
 ## Record-shape decisions
 

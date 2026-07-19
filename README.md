@@ -44,26 +44,21 @@ The whole publish path is testable with **zero external dependencies**. `@hedger
 
 What genuinely needs the real world, and so lives in manual checklists rather than the automated suite:
 
-- **OAuth** — the app-password path is covered; the atproto OAuth login flow needs a real browser and PDS.
+- **OAuth login** — publishing authenticates with atproto OAuth via the loopback flow (the shipped and only auth path). It needs a real browser and PDS, so it's exercised by hand, not in CI.
 - **Custom-domain handles** — resolving `you.com` → DID → PDS hits live DNS, the Bluesky handle resolver, and `plc.directory`.
 - **Bluesky share-preview crawling** — how a shared post's link unfurls depends on Bluesky's own crawler and cache.
 
 ## Publishing for real
 
-The round-trip tests never touch your account. To publish to your actual repo, authenticate with an **app password** (Bluesky → Settings → App Passwords) — **never your account password**:
-
-```bash
-export ATP_IDENTIFIER="you.bsky.social"   # or your custom-domain handle
-export ATP_APP_PASSWORD="xxxx-xxxx-xxxx-xxxx"
-```
+The round-trip tests never touch your account. To publish to your actual repo, authenticate with **atproto OAuth** — there's no password or credential to store. The first publish opens a browser for you to log in; the session is then cached (in `~/.config/hedgerow`) and reused, refreshing itself silently, until you sign out.
 
 ```ts
-import { appPasswordPublisher, publishSite, parsePost } from "@hedgerow/publish";
+import { oauthPublisher, publishSite, parsePost } from "@hedgerow/publish";
 
-const publisher = await appPasswordPublisher({
-  identifier: process.env.ATP_IDENTIFIER!,
-  password: process.env.ATP_APP_PASSWORD!,
-});
+// Restores a cached session, or runs the browser login the first time.
+// `identifier` (a handle or DID) is an optional hint — omit it to pick the
+// account in the browser.
+const publisher = await oauthPublisher({ identifier: "you.bsky.social" });
 
 const posts = [parsePost(markdown, "my-first-post")];
 const result = await publishSite(
@@ -73,7 +68,13 @@ const result = await publishSite(
 );
 ```
 
+The login uses the atproto **loopback client** flow: a native client id (`http://localhost?...`) with a throwaway callback server on `127.0.0.1`. Nothing to host, no client secret. Sign out (clear the cached session) with `clearSession()` (aliased `logout()`); pass `{ identifier }` to drop just one account.
+
+Because a record write requires a real login, there is deliberately **no headless publish path** — a human completes the browser step once, then reruns are non-interactive off the cached session.
+
 Persist `result.state` between runs so reruns reuse the same record keys and skip unchanged writes. Verify what landed in your repo at [pdsls.dev](https://pdsls.dev).
+
+The demo wraps all of this: `pnpm --filter @hedgerow/demo run publish:pds` (set `ATP_IDENTIFIER` to hint the account; add `--print-auth-url` to print the login URL instead of opening a browser).
 
 ## License
 

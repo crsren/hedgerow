@@ -1,13 +1,21 @@
 // Publish the demo's local posts as site.standard records to a real PDS.
 //
-//   ATP_IDENTIFIER=you.bsky.social \
-//   ATP_APP_PASSWORD=xxxx-xxxx-xxxx-xxxx \
 //   pnpm --filter @hedgerow/demo run publish:pds
 //
+// Auth is atproto OAuth: the first run opens a browser for you to log in, then
+// caches the session (in ~/.config/hedgerow) and reuses it silently after that.
+// There's no password to set — ATP_IDENTIFIER is an optional hint for which
+// account to log in as (a handle or DID); omit it to choose in the browser.
+//
+//   ATP_IDENTIFIER=you.bsky.social pnpm --filter @hedgerow/demo run publish:pds
+//
 // Flags:
-//   --share  auto-create a canonical Bluesky share post for any post lacking a
-//            comment anchor, and use it as the document's bskyPostRef.
-//   --prune  delete document records for slugs no longer in ./posts.
+//   --share           auto-create a canonical Bluesky share post for any post
+//                     lacking a comment anchor, and use it as the bskyPostRef.
+//   --prune           delete document records for slugs no longer in ./posts.
+//   --print-auth-url  on a fresh login, print the authorization URL instead of
+//                     opening a browser (open it yourself; the callback is still
+//                     caught on 127.0.0.1). Handy over SSH / for a quick smoke.
 //
 // State (slug -> record rkey) persists to .publish-state.json so reruns target
 // the same records; unchanged posts are skipped (the `changed` flag).
@@ -17,7 +25,8 @@ import { join } from "node:path";
 import {
   parsePost,
   publishSite,
-  appPasswordPublisher,
+  oauthPublisher,
+  openInBrowser,
   emptyState,
 } from "@hedgerow/publish";
 
@@ -48,28 +57,34 @@ function loadState() {
 }
 
 async function main() {
-  const { ATP_IDENTIFIER, ATP_APP_PASSWORD, ATP_SERVICE } = process.env;
-  if (!ATP_IDENTIFIER || !ATP_APP_PASSWORD) {
-    console.error(
-      "Missing credentials. Set ATP_IDENTIFIER and ATP_APP_PASSWORD (and optionally ATP_SERVICE).",
-    );
-    process.exit(1);
-  }
+  const { ATP_IDENTIFIER } = process.env;
 
   const share = process.argv.includes("--share");
   const prune = process.argv.includes("--prune");
+  const printAuthUrl = process.argv.includes("--print-auth-url");
 
   const posts = readdirSync(POSTS_DIR)
     .filter((f) => f.endsWith(".md"))
     .map((f) => parsePost(readFileSync(join(POSTS_DIR, f), "utf8"), f.replace(/\.md$/, "")));
 
-  console.log(`Publishing ${posts.length} post(s) as ${ATP_IDENTIFIER}…\n`);
-
-  const publisher = await appPasswordPublisher({
+  // `openUrl` fires only on a fresh login (never when a cached session is
+  // restored), so this both messages the user and, with --print-auth-url,
+  // swaps the browser open for a printed URL.
+  const publisher = await oauthPublisher({
     identifier: ATP_IDENTIFIER,
-    password: ATP_APP_PASSWORD,
-    service: ATP_SERVICE, // undefined -> defaults to https://bsky.social
+    openUrl: async (url) => {
+      const who = ATP_IDENTIFIER ? ` as ${ATP_IDENTIFIER}` : "";
+      if (printAuthUrl) {
+        console.log(`No cached session. Open this URL to log in${who}:\n\n${url}\n`);
+        console.log("Waiting for the browser redirect… (Ctrl-C to abort)\n");
+        return;
+      }
+      console.log(`No cached session — opening browser to log in${who}…\n`);
+      openInBrowser(url);
+    },
   });
+
+  console.log(`Publishing ${posts.length} post(s) as ${publisher.did}…\n`);
 
   const result = await publishSite(publisher, config, posts, loadState(), {
     ...(share ? { share: { enabled: true } } : {}),
