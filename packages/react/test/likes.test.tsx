@@ -42,6 +42,21 @@ describe("Likes components", () => {
     expect(root.hasAttribute("data-loading")).toBe(false);
   });
 
+  it("lazy-loads liker avatars", async () => {
+    const stub = likesStub();
+    const { container } = render(
+      <Likes.Root post={ROOT_URI} maxPages={1} fetchImpl={stub.fetch}>
+        <Likes.Avatars max={2} data-testid="stack" />
+      </Likes.Root>,
+    );
+    await waitFor(() =>
+      expect(container.querySelector('[data-testid="stack"] img')).not.toBeNull(),
+    );
+    for (const img of container.querySelectorAll('[data-testid="stack"] img')) {
+      expect(img.getAttribute("loading")).toBe("lazy");
+    }
+  });
+
   it("renders a custom avatar template per liker", async () => {
     const stub = likesStub();
     const { container, findByText } = render(

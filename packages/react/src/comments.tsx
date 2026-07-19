@@ -77,6 +77,9 @@ export const Root = React.forwardRef<HTMLDivElement, CommentsRootProps>(function
     style,
     ref,
     props: {
+      // Announce to assistive tech that the region is fetching (cleared once
+      // loaded); consumer can override via `rest`.
+      "aria-busy": value.isLoading || undefined,
       ...rest,
       ...dataAttrs({
         status: value.status,
@@ -131,6 +134,9 @@ export const List = React.forwardRef<HTMLDivElement, CommentsListProps>(function
     style,
     ref,
     props: {
+      // `role="list"` keeps the group announced as a list even though the
+      // default element is a plain <div>; consumer can override via `rest`.
+      role: "list",
       ...rest,
       ...dataAttrs({ empty: state.isEmpty, count: state.count }),
       children: items,
@@ -184,6 +190,9 @@ export const Item = React.forwardRef<HTMLDivElement, CommentItemProps>(function 
     style,
     ref,
     props: {
+      // Pairs with the `role="list"` on List/Replies so each row is announced
+      // as a list item, whatever element the consumer renders it as.
+      role: "listitem",
       ...rest,
       ...dataAttrs({
         depth,
@@ -227,7 +236,14 @@ export const Replies = React.forwardRef<HTMLDivElement, CommentsRepliesProps>(fu
     className,
     style,
     ref,
-    props: { ...rest, ...dataAttrs({ depth: depth + 1, count: state.count }), children: items },
+    props: {
+      // A nested reply list — same list semantics as the top-level List, so the
+      // recursed listitems aren't orphaned.
+      role: "list",
+      ...rest,
+      ...dataAttrs({ depth: depth + 1, count: state.count }),
+      children: items,
+    },
   });
 });
 
@@ -281,6 +297,7 @@ export const Avatar = React.forwardRef<HTMLImageElement, CommentsAvatarProps>(fu
     props: {
       src: node.author.avatar,
       alt: node.author.displayName || node.author.handle,
+      loading: "lazy",
       ...rest,
     },
   });

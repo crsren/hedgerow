@@ -48,6 +48,8 @@ export const Root = React.forwardRef<HTMLDivElement, LikesRootProps>(function Li
     style,
     ref,
     props: {
+      // Mirror Comments.Root: signal the fetch to assistive tech while pending.
+      "aria-busy": value.isLoading || undefined,
       ...rest,
       ...dataAttrs({
         status: value.status,
@@ -159,6 +161,7 @@ export const Avatar = React.forwardRef<HTMLImageElement, LikeAvatarProps>(functi
     props: {
       src: like.actor.avatar,
       alt: like.actor.displayName || like.actor.handle,
+      loading: "lazy",
       ...dataAttrs({ handle: like.actor.handle }),
       ...rest,
     },

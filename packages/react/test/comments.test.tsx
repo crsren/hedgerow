@@ -189,6 +189,80 @@ describe("Comments stubs, labels, sort", () => {
   });
 });
 
+describe("Comments accessibility", () => {
+  it("marks Root aria-busy while loading and clears it once loaded", async () => {
+    const gate = deferred<Response>();
+    const body = loadFixture<RawGetPostThreadResponse>("getPostThread");
+    const stub = stubFetch((method) =>
+      method === "app.bsky.feed.getPostThread" ? gate.promise : jsonResponse({}, 501),
+    );
+    const { container } = render(
+      <Comments.Root post={ROOT_URI} fetchImpl={stub.fetch} data-testid="root">
+        <Comments.List>
+          <Comments.Item>
+            <Comments.Author />
+            <Comments.Replies />
+          </Comments.Item>
+        </Comments.List>
+      </Comments.Root>,
+    );
+    const root = container.querySelector('[data-testid="root"]')!;
+    expect(root.getAttribute("aria-busy")).toBe("true");
+
+    await act(async () => {
+      gate.resolve(jsonResponse(body));
+    });
+    await waitFor(() => expect(root.hasAttribute("aria-busy")).toBe(false));
+  });
+
+  it("gives List/Replies list semantics and each Item a listitem role", async () => {
+    const stub = threadStub("getPostThread");
+    const { getByTestId, container } = render(<Thread post={ROOT_URI} fetchImpl={stub.fetch} />);
+
+    await waitFor(() => expect(container.querySelector('[role="listitem"]')).not.toBeNull());
+    // The List is a list, and its direct children are listitems.
+    const list = getByTestId("list");
+    expect(list.getAttribute("role")).toBe("list");
+    // Nested replies carry their own list role (fixture nests ≥ 2 deep).
+    expect(container.querySelectorAll('[role="list"]').length).toBeGreaterThan(1);
+    // Every top-level comment is a listitem.
+    for (const item of container.querySelectorAll('[data-comment][data-depth="0"]')) {
+      expect(item.getAttribute("role")).toBe("listitem");
+    }
+  });
+
+  it("lazy-loads comment avatars", async () => {
+    const stub = threadStub("getPostThread");
+    const { container } = render(
+      <Comments.Root post={ROOT_URI} fetchImpl={stub.fetch}>
+        <Comments.List>
+          <Comments.Item>
+            <Comments.Avatar />
+            <Comments.Replies />
+          </Comments.Item>
+        </Comments.List>
+      </Comments.Root>,
+    );
+    await waitFor(() => expect(container.querySelector("img")).not.toBeNull());
+    expect(container.querySelector("img")!.getAttribute("loading")).toBe("lazy");
+  });
+
+  it("lets a consumer override the default role via props", async () => {
+    const stub = threadStub("getPostThread");
+    const { getByTestId } = render(
+      <Comments.Root post={ROOT_URI} fetchImpl={stub.fetch}>
+        <Comments.List data-testid="list" role="presentation">
+          <Comments.Item>
+            <Comments.Author />
+            <Comments.Replies />
+          </Comments.Item>
+        </Comments.List>
+      </Comments.Root>,
+    );
+    await waitFor(() => expect(getByTestId("list").getAttribute("role")).toBe("presentation"));
+  });
+});
+
 describe("Comments render-prop and data-attributes", () => {
   it("swaps the element via render and merges className", async () => {
     const stub = threadStub("getPostThread");

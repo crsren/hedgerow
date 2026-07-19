@@ -17,8 +17,8 @@ hedgerow/
 │   └── demo/            Astro demo site — renders a site from atproto records
 ├── packages/
 │   ├── publish/         @hedgerow/publish — markdown → site.standard.* records on a PDS, and read them back
-│   ├── comments/        @hedgerow/comments — framework-agnostic read core for Bluesky comments/likes   (planned)
-│   ├── react/           @hedgerow/react — headless React components over the comments core             (planned)
+│   ├── comments/        @hedgerow/comments — zero-dep read core: resolve a post, fetch + normalise its comments/likes
+│   ├── react/           @hedgerow/react — headless React components and hooks over the comments core
 │   ├── embed/           @hedgerow/embed — drop-in web component for non-React sites                     (planned)
 │   └── astro/           @hedgerow/astro — Astro integration                                             (planned)
 └── tooling/
