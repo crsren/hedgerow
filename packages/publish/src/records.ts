@@ -22,6 +22,22 @@ export interface ParsedPost {
   publishedAt: string;
   description?: string;
   tags?: string[];
+  /**
+   * `draft: true` in frontmatter. `publishSite` skips the post entirely — no
+   * document record, no share post — and reports the slug in `skipped`. A draft
+   * slug still counts as "kept" for prune, so flipping a live post to draft
+   * never deletes its published record (explicit unpublish = delete the file +
+   * prune). Absent means not a draft.
+   */
+  draft?: boolean;
+  /**
+   * `share: false` in frontmatter opts a post out of auto-share: `publishSite`
+   * never MINTS a Bluesky share post for it. An explicit `bskyPostRef` /
+   * `bskyPostUri` (and any previously persisted share) is still honored. Absent
+   * (or `true`) leaves auto-share on for this post, subject to the run's
+   * `share` option.
+   */
+  share?: boolean;
   /** Raw markdown body (kept for local rich rendering). */
   body: string;
   /** Optional Bluesky post anchor for comments, as a resolved StrongRef (SLIMS-55). */
@@ -46,6 +62,10 @@ export function parsePost(markdown: string, fallbackSlug: string): ParsedPost {
     publishedAt: new Date(data.publishedAt).toISOString(),
     ...(data.description ? { description: String(data.description) } : {}),
     ...(Array.isArray(data.tags) ? { tags: data.tags.map(String) } : {}),
+    // Presence-sensitive booleans: `share: false` must be distinguishable from
+    // an absent `share`, so only set the field when the key is actually there.
+    ...(data.draft !== undefined ? { draft: Boolean(data.draft) } : {}),
+    ...(data.share !== undefined ? { share: Boolean(data.share) } : {}),
     body: content.trim(),
     ...(data.bskyPostRef ? { bskyPostRef: data.bskyPostRef as StrongRef } : {}),
     ...(data.bskyPostUri ? { bskyPostUri: String(data.bskyPostUri) } : {}),

@@ -10,10 +10,10 @@
 //   ATP_IDENTIFIER=you.bsky.social pnpm --filter @hedgerow/demo run publish:pds
 //
 // Flags:
-//   --share           auto-create a canonical Bluesky share post for any post.
+//   --share           auto-create a canonical Bluesky share post for any post
+//                     lacking a comment anchor, and use it as the bskyPostRef.
 //                     Creates REAL public posts from your account — previews
 //                     them and asks for confirmation first (--yes to skip).
-//                     lacking a comment anchor, and use it as the bskyPostRef.
 //   --prune           delete document records for slugs no longer in ./posts.
 //   --print-auth-url  on a fresh login, print the authorization URL instead of
 //                     opening a browser (open it yourself; the callback is still
@@ -94,8 +94,15 @@ async function main() {
   // account. Show exactly what would be posted and require explicit consent
   // (or --yes) before doing it — records are quiet data, feed posts are not.
   if (share) {
+    // Mirror publishSite's mint condition: drafts are skipped entirely, and
+    // `share: false` opts a post out of auto-share, so neither would be posted.
     const wouldShare = posts.filter(
-      (p) => !p.bskyPostRef && !p.bskyPostUri && !state.shares?.[p.slug],
+      (p) =>
+        !p.draft &&
+        p.share !== false &&
+        !p.bskyPostRef &&
+        !p.bskyPostUri &&
+        !state.shares?.[p.slug],
     );
     if (wouldShare.length > 0) {
       console.log(`--share will create ${wouldShare.length} PUBLIC Bluesky post(s) from ${publisher.did}:\n`);
@@ -138,6 +145,10 @@ async function main() {
       console.log(`  ${slug}`);
       console.log(`             ${bskyPostLink(publisher.did, ref.uri)}`);
     }
+  }
+
+  if (result.skipped.length) {
+    console.log(`\nSkipped drafts (not published): ${result.skipped.join(", ")}`);
   }
 
   if (result.pruned.length) {

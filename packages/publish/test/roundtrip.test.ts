@@ -6,7 +6,7 @@ import { TID } from "@atproto/common-web";
 import { TestNetworkNoAppView } from "@atproto/dev-env";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { agentPublisher } from "../src/auth.js";
-import { publishSite, type PublishState } from "../src/publish.js";
+import { emptyState, publishSite, unshare, type PublishState } from "../src/publish.js";
 import { parsePost } from "../src/records.js";
 import { listRecords, readSiteFromPds } from "../src/read.js";
 
@@ -415,5 +415,180 @@ Body.
     expect(second.pruned).toEqual([]);
     const site = await readSiteFromPds(pdsUrl, did);
     expect(site.documents.find((d) => d.value.path === "/prune-noop")).toBeDefined();
+  });
+});
+
+describe("draft: skipping posts", () => {
+  it("skips a draft entirely — no record, no share, reported in skipped", async () => {
+    const publisher = agentPublisher(agent);
+    const normal = parsePost(
+      `---
+title: "Live One"
+slug: draft-live
+publishedAt: 2026-07-19T10:00:00.000Z
+---
+Body.
+`,
+      "draft-live",
+    );
+    const draft = parsePost(
+      `---
+title: "Work In Progress"
+slug: pure-draft
+publishedAt: 2026-07-19T10:00:00.000Z
+draft: true
+---
+Not ready.
+`,
+      "pure-draft",
+    );
+
+    const result = await publishSite(publisher, CFG, [normal, draft], undefined, {
+      share: { enabled: true },
+    });
+
+    expect(result.skipped).toEqual(["pure-draft"]);
+    // the draft never reaches the documents list, and no share was minted for it
+    expect(result.documents.map((d) => d.slug)).toEqual(["draft-live"]);
+    expect(result.state.shares["pure-draft"]).toBeUndefined();
+
+    const site = await readSiteFromPds(pdsUrl, did);
+    expect(site.documents.find((d) => d.value.path === "/pure-draft")).toBeUndefined();
+    expect(site.documents.find((d) => d.value.path === "/draft-live")).toBeDefined();
+  });
+
+  it("keeps a published post flipped to draft — not pruned even with prune:true", async () => {
+    const publisher = agentPublisher(agent);
+    const live = parsePost(
+      `---
+title: "Flip Me"
+slug: flip-draft
+publishedAt: 2026-07-19T10:00:00.000Z
+---
+Published body.
+`,
+      "flip-draft",
+    );
+
+    const first = await publishSite(publisher, CFG, [live]);
+    expect(
+      (await readSiteFromPds(pdsUrl, did)).documents.find((d) => d.value.path === "/flip-draft"),
+    ).toBeDefined();
+
+    const drafted = parsePost(
+      `---
+title: "Flip Me"
+slug: flip-draft
+publishedAt: 2026-07-19T10:00:00.000Z
+draft: true
+---
+Published body.
+`,
+      "flip-draft",
+    );
+    const second = await publishSite(publisher, CFG, [drafted], first.state, { prune: true });
+
+    expect(second.skipped).toEqual(["flip-draft"]);
+    expect(second.pruned).toEqual([]);
+    // record is still tracked in state and still live on the PDS
+    expect(second.state.docs["flip-draft"]).toBe(first.state.docs["flip-draft"]);
+    const site = await readSiteFromPds(pdsUrl, did);
+    expect(site.documents.find((d) => d.value.path === "/flip-draft")).toBeDefined();
+  });
+});
+
+describe("share: false opts out of auto-share", () => {
+  it("writes the record but mints no share post, while its peer still shares", async () => {
+    const publisher = agentPublisher(agent);
+    const shared = parsePost(
+      `---
+title: "Will Share"
+slug: will-share
+publishedAt: 2026-07-19T10:00:00.000Z
+---
+Body.
+`,
+      "will-share",
+    );
+    const noShare = parsePost(
+      `---
+title: "Quiet Post"
+slug: no-share
+publishedAt: 2026-07-19T10:00:00.000Z
+share: false
+---
+Body.
+`,
+      "no-share",
+    );
+
+    const before = await listRecords<FeedPost>(pdsUrl, did, "app.bsky.feed.post");
+    const result = await publishSite(publisher, CFG, [shared, noShare], undefined, {
+      share: { enabled: true },
+    });
+    const after = await listRecords<FeedPost>(pdsUrl, did, "app.bsky.feed.post");
+
+    // exactly one new feed post — from `will-share`, not `no-share`
+    expect(after.length - before.length).toBe(1);
+    expect(result.state.shares["will-share"]).toBeDefined();
+    expect(result.state.shares["no-share"]).toBeUndefined();
+
+    // both documents are written; only the sharing one carries an anchor
+    const site = await readSiteFromPds(pdsUrl, did);
+    expect(site.documents.find((d) => d.value.path === "/will-share")?.value.bskyPostRef).toBeDefined();
+    const quiet = site.documents.find((d) => d.value.path === "/no-share");
+    expect(quiet).toBeDefined();
+    expect(quiet?.value.bskyPostRef).toBeUndefined();
+  });
+});
+
+describe("unshare: undoing an auto-share", () => {
+  it("deletes the share post, strips the document anchor, cleans state", async () => {
+    const publisher = agentPublisher(agent);
+    const post = parsePost(
+      `---
+title: "Unshare Me"
+slug: unshare-me
+publishedAt: 2026-07-19T10:00:00.000Z
+---
+Body.
+`,
+      "unshare-me",
+    );
+
+    const first = await publishSite(publisher, CFG, [post], undefined, { share: { enabled: true } });
+    const shareRef = first.state.shares["unshare-me"];
+    expect(shareRef).toBeDefined();
+
+    // preconditions: share post exists on the PDS and the doc anchors to it
+    const listed = await listRecords<FeedPost>(pdsUrl, did, "app.bsky.feed.post");
+    expect(listed.find((r) => r.uri === shareRef!.uri)).toBeDefined();
+    const doc0 = (await readSiteFromPds(pdsUrl, did)).documents.find(
+      (d) => d.value.path === "/unshare-me",
+    );
+    expect(doc0?.value.bskyPostRef).toEqual(shareRef);
+
+    const res = await unshare(publisher, "unshare-me", first.state);
+    expect(res.removed).toBe(true);
+    expect(res.warnings).toEqual([]);
+    expect(res.state.shares["unshare-me"]).toBeUndefined();
+
+    // share post is gone, and the doc read-back no longer carries the anchor
+    const afterList = await listRecords<FeedPost>(pdsUrl, did, "app.bsky.feed.post");
+    expect(afterList.find((r) => r.uri === shareRef!.uri)).toBeUndefined();
+    const doc1 = (await readSiteFromPds(pdsUrl, did)).documents.find(
+      (d) => d.value.path === "/unshare-me",
+    );
+    expect(doc1).toBeDefined();
+    expect(doc1?.value.bskyPostRef).toBeUndefined();
+  });
+
+  it("is a graceful no-op for a slug that was never shared", async () => {
+    const publisher = agentPublisher(agent);
+    const res = await unshare(publisher, "never-shared", emptyState());
+    expect(res.removed).toBe(false);
+    expect(res.state.shares["never-shared"]).toBeUndefined();
+    expect(res.warnings).toHaveLength(1);
+    expect(res.warnings[0]).toContain("never-shared");
   });
 });

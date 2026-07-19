@@ -43,6 +43,13 @@ export interface PublishResult {
   warnings: string[];
   /** Slugs whose document records were deleted this run by prune. Empty when prune is off. */
   pruned: string[];
+  /**
+   * Slugs skipped this run because the post is a draft (`draft: true`). A skipped
+   * draft is never written and never shared, but its slug is NOT pruned — a post
+   * flipped to draft keeps its already-published record until it's explicitly
+   * unpublished (delete the file + prune). Empty when no drafts were present.
+   */
+  skipped: string[];
 }
 
 /** Auto-create a canonical Bluesky share post for documents lacking a comment anchor. */
@@ -135,7 +142,17 @@ export async function publishSite(
   next.publication = pubRkey;
 
   const documents: PublishResult["documents"] = [];
+  const skipped: string[] = [];
   for (const post of posts) {
+    // Drafts are skipped whole: no record write, no share. We deliberately do
+    // NOT touch next.docs[slug] — a previously-published post flipped to draft
+    // keeps its live record (and, being in `posts`, its slug stays in the prune
+    // keep-set below), so going draft never silently deletes what's published.
+    if (post.draft) {
+      skipped.push(post.slug);
+      continue;
+    }
+
     const rkey = next.docs[post.slug] ?? TID.nextStr();
 
     // An explicit bskyPostRef always wins; otherwise resolve the interim
@@ -164,9 +181,10 @@ export async function publishSite(
       if (persisted) {
         // Reuse the share created on a prior run — never mint a duplicate. This
         // holds even when share isn't enabled this run, so the document keeps
-        // its anchor instead of flapping.
+        // its anchor instead of flapping. `share: false` only blocks minting a
+        // NEW share, not reusing one already created for this slug.
         bskyPostRef = persisted;
-      } else if (options.share?.enabled) {
+      } else if (options.share?.enabled && post.share !== false) {
         const canonicalUrl = `${siteOrigin}/${post.slug}`;
         try {
           bskyPostRef = await createSharePost(publisher, post, canonicalUrl, options.share);
@@ -196,6 +214,10 @@ export async function publishSite(
 
   const pruned: string[] = [];
   if (options.prune) {
+    // Every provided post's slug is kept — INCLUDING drafts, which we skipped
+    // above. A draft is still "present" as far as prune is concerned, so its
+    // published record survives; only removing the file (so the slug leaves
+    // `posts`) makes prune delete it.
     const keep = new Set(posts.map((p) => p.slug));
     // Union of docs + shares: a slug tracked in either but no longer published
     // is an orphan. We delete its document record (if any) and stop tracking it
@@ -224,7 +246,7 @@ export async function publishSite(
     }
   }
 
-  return { publicationUri: pub.uri, documents, state: next, warnings, pruned };
+  return { publicationUri: pub.uri, documents, state: next, warnings, pruned, skipped };
 }
 
 /**
@@ -255,4 +277,93 @@ async function createSharePost(
   const rkey = TID.nextStr();
   const res = await publisher.putRecord(BSKY_POST_NSID, rkey, record);
   return { uri: res.uri, cid: res.cid };
+}
+
+/** Outcome of {@link unshare}. Persist `state`; `warnings` surfaces the soft cases. */
+export interface UnshareResult {
+  /** Updated state — the share entry for the slug is gone. Persist it. */
+  state: PublishState;
+  /** True iff a share post record was actually deleted this call. */
+  removed: boolean;
+  /**
+   * Non-fatal notes: the slug was never shared, the share post was already gone,
+   * or the document couldn't be rewritten. The state edit still applies.
+   */
+  warnings: string[];
+}
+
+const errMessage = (err: unknown): string => (err instanceof Error ? err.message : String(err));
+
+/**
+ * Undo an auto-share: delete the canonical Bluesky share post for `slug`, drop
+ * its entry from `state.shares`, and — if the document record still anchors to
+ * that share — rewrite the document without its `bskyPostRef`.
+ *
+ * DESTRUCTIVE AND IRREVERSIBLE: deleting the `app.bsky.feed.post` deletes the
+ * reply thread hanging off it. Every comment on that share is gone for good;
+ * re-sharing later mints a fresh post with an empty thread, not the old one.
+ *
+ * Non-fatal by design (matches publishSite): a slug that was never shared, or a
+ * share post that's already gone, returns a warning rather than throwing — only
+ * a structurally broken stored uri (no parseable rkey) throws. The state edit
+ * (removing `shares[slug]`) always applies, so calling twice is safe.
+ */
+export async function unshare(
+  publisher: Publisher,
+  slug: string,
+  state: PublishState,
+): Promise<UnshareResult> {
+  const next: PublishState = {
+    publication: state.publication,
+    docs: { ...state.docs },
+    shares: { ...(state.shares ?? {}) },
+  };
+  const warnings: string[] = [];
+
+  const shareRef = next.shares[slug];
+  if (!shareRef) {
+    return { state: next, removed: false, warnings: [`no share post tracked for "${slug}"`] };
+  }
+
+  const shareRkey = shareRef.uri.split("/").pop();
+  if (!shareRkey) {
+    // Clearly-broken input: a stored uri we can't derive an rkey from.
+    throw new Error(`unshare: malformed share uri for "${slug}": ${shareRef.uri}`);
+  }
+
+  let removed = false;
+  try {
+    await publisher.deleteRecord(BSKY_POST_NSID, shareRkey);
+    removed = true;
+  } catch (err) {
+    warnings.push(
+      `share post for "${slug}" (${shareRkey}) could not be deleted (already gone?): ${errMessage(err)}`,
+    );
+  }
+
+  // Strip the anchor from the document, but only if it still points at THIS
+  // share — never clobber an anchor the author has since repointed elsewhere.
+  const docRkey = next.docs[slug];
+  if (docRkey) {
+    try {
+      const existing = await publisher.getRecord(DOCUMENT_NSID, docRkey);
+      const currentRef = (existing as { bskyPostRef?: StrongRef } | null)?.bskyPostRef;
+      if (existing && currentRef?.uri === shareRef.uri) {
+        const { bskyPostRef: _drop, ...rest } = existing;
+        await publisher.putRecord(DOCUMENT_NSID, docRkey, {
+          ...rest,
+          updatedAt: new Date().toISOString(),
+        });
+      }
+    } catch (err) {
+      warnings.push(
+        `could not rewrite document "${slug}" (${docRkey}) without its anchor: ${errMessage(err)}`,
+      );
+    }
+  } else {
+    warnings.push(`no document tracked for "${slug}"; removed the share ref from state only`);
+  }
+
+  delete next.shares[slug];
+  return { state: next, removed, warnings };
 }

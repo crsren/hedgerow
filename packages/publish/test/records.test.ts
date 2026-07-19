@@ -53,6 +53,22 @@ body`,
     expect(p.bskyPostRef).toBeUndefined();
   });
 
+  it("reads draft: true and leaves it absent otherwise", () => {
+    const draft = parsePost("---\ntitle: T\npublishedAt: 2026-01-01\ndraft: true\n---\nx", "s");
+    expect(draft.draft).toBe(true);
+    const notDraft = parsePost("---\ntitle: T\npublishedAt: 2026-01-01\n---\nx", "s");
+    expect(notDraft.draft).toBeUndefined();
+  });
+
+  it("distinguishes share: false from an absent share", () => {
+    const off = parsePost("---\ntitle: T\npublishedAt: 2026-01-01\nshare: false\n---\nx", "s");
+    expect(off.share).toBe(false);
+    const on = parsePost("---\ntitle: T\npublishedAt: 2026-01-01\nshare: true\n---\nx", "s");
+    expect(on.share).toBe(true);
+    const absent = parsePost("---\ntitle: T\npublishedAt: 2026-01-01\n---\nx", "s");
+    expect(absent.share).toBeUndefined();
+  });
+
   it("keeps an explicit bskyPostRef alongside a bskyPostUri (ref wins downstream)", () => {
     const p = parsePost(
       `---
