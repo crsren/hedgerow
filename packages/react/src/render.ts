@@ -73,7 +73,7 @@ export function mergeRefs<T>(
 type AnyProps = Record<string, unknown>;
 
 const isEventHandler = (key: string, value: unknown): value is (...args: unknown[]) => void =>
-  typeof value === "function" && key.length > 2 && key.startsWith("on") && key[2] === key[2]?.toUpperCase();
+  typeof value === "function" && /^on[A-Z]/.test(key);
 
 /**
  * Merge our computed props into a consumer-supplied element's own props.

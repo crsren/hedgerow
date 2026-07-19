@@ -18,9 +18,13 @@ const DEFAULT_PAGE_SIZE = 100;
 const DEFAULT_MAX_PAGES = 5;
 
 /**
- * Page a post's likes into a flat, deduped-by-page actor list. Stops at the
- * page cap or when the AppView returns no further cursor, whichever comes first;
- * the returned `cursor` is non-undefined only when more likes remain uncollected.
+ * Page a post's likes into a flat actor list, deduped by actor DID. The dedup
+ * matters across pages: likes arriving between page fetches can shift the
+ * cursor window so the same actor appears on two pages — without it, `total`
+ * overcounts and renderers keying on `actor.did` get duplicate keys. Stops at
+ * the page cap or when the AppView returns no further cursor, whichever comes
+ * first; the returned `cursor` is non-undefined only when more likes remain
+ * uncollected.
  */
 export async function fetchLikes(input: string, opts: FetchLikesOpts = {}): Promise<LikesResult> {
   const pageSize = Math.min(Math.max(opts.pageSize ?? DEFAULT_PAGE_SIZE, 1), 100);
@@ -28,6 +32,7 @@ export async function fetchLikes(input: string, opts: FetchLikesOpts = {}): Prom
   const uri = opts.preResolved ? input.trim() : await resolvePostUri(input, opts);
 
   const likes: Like[] = [];
+  const seen = new Set<string>();
   let cursor: string | undefined;
   let pages = 0;
 
@@ -39,6 +44,8 @@ export async function fetchLikes(input: string, opts: FetchLikesOpts = {}): Prom
       opts.fetchImpl,
     );
     for (const like of res.likes) {
+      if (seen.has(like.actor.did)) continue;
+      seen.add(like.actor.did);
       likes.push({
         actor: {
           did: like.actor.did,

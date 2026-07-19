@@ -153,63 +153,83 @@ export async function publishSite(
       continue;
     }
 
+    // The rkey is committed to state BEFORE any write: if a put fails (or its
+    // response is lost after the write landed), the rerun retries the SAME
+    // rkey and putRecord upserts — so a flaky run can never mint a duplicate
+    // document. The caller persisting `result.state` even on warning-laden
+    // runs is what makes this hold.
     const rkey = next.docs[post.slug] ?? TID.nextStr();
+    next.docs[post.slug] = rkey;
 
-    // An explicit bskyPostRef always wins; otherwise resolve the interim
-    // bskyPostUri to a StrongRef. Resolution failure is non-fatal: the post is
-    // published without an anchor and the reason is surfaced as a warning, so
-    // one dead post link can't sink the whole publish.
-    let bskyPostRef = post.bskyPostRef;
-    if (!bskyPostRef && post.bskyPostUri) {
-      try {
-        bskyPostRef = await resolveBskyPostRef(post.bskyPostUri, options.resolveOpts);
-      } catch (err) {
-        warnings.push(
-          `could not resolve bskyPostRef for "${post.slug}" (${post.bskyPostUri}): ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    }
-
-    // Auto-share: only for posts with no explicit anchor of any kind. An
-    // explicit bskyPostRef/bskyPostUri always wins over a persisted share, so
-    // a post that later gains one silently drops its auto-share (the old share
-    // post still exists on Bluesky; state just stops pointing at it here).
-    if (!bskyPostRef && !post.bskyPostUri) {
-      const persisted = next.shares[post.slug];
-      if (persisted) {
-        // Reuse the share created on a prior run — never mint a duplicate. This
-        // holds even when share isn't enabled this run, so the document keeps
-        // its anchor instead of flapping. `share: false` only blocks minting a
-        // NEW share, not reusing one already created for this slug.
-        bskyPostRef = persisted;
-      } else if (options.share?.enabled && post.share !== false) {
-        const canonicalUrl = `${siteOrigin}/${post.slug}`;
+    // Each post is isolated: one post's failure becomes a warning, the loop
+    // continues, and the accumulated state (minted rkeys, created shares) is
+    // always returned — a mid-run throw must never strand real PDS side
+    // effects in lost in-memory state.
+    try {
+      // An explicit bskyPostRef always wins; otherwise resolve the interim
+      // bskyPostUri to a StrongRef. Resolution failure is non-fatal AND must
+      // not strip an anchor the live record already carries — a transient
+      // fetch error would otherwise detach the comment thread and churn
+      // updatedAt until the next good run. Only an authoring change (removing
+      // bskyPostUri from frontmatter) drops the ref.
+      let bskyPostRef = post.bskyPostRef;
+      if (!bskyPostRef && post.bskyPostUri) {
         try {
-          bskyPostRef = await createSharePost(publisher, post, canonicalUrl, options.share);
-          next.shares[post.slug] = bskyPostRef;
+          bskyPostRef = await resolveBskyPostRef(post.bskyPostUri, options.resolveOpts);
         } catch (err) {
-          // Share creation is best-effort: publish the document without the
-          // anchor and surface the reason rather than sinking the whole run.
+          const existing = await publisher.getRecord(DOCUMENT_NSID, rkey);
+          const existingRef = existing?.bskyPostRef as StrongRef | undefined;
+          if (existingRef) bskyPostRef = existingRef;
           warnings.push(
-            `could not create share post for "${post.slug}": ${
+            `could not resolve bskyPostRef for "${post.slug}" (${post.bskyPostUri}): ${
               err instanceof Error ? err.message : String(err)
-            }`,
+            }${existingRef ? " — kept the existing anchor" : ""}`,
           );
         }
       }
-    }
 
-    const record = documentRecord({ ...post, bskyPostRef }, { siteUri: pub.uri });
-    const res = await upsertIfChanged(
-      publisher,
-      DOCUMENT_NSID,
-      rkey,
-      record as unknown as Record<string, unknown>,
-    );
-    next.docs[post.slug] = rkey;
-    documents.push({ slug: post.slug, uri: res.uri, title: post.title, changed: res.changed });
+      // Auto-share: only for posts with no explicit anchor of any kind. An
+      // explicit bskyPostRef/bskyPostUri always wins over a persisted share, so
+      // a post that later gains one silently drops its auto-share (the old share
+      // post still exists on Bluesky; state just stops pointing at it here).
+      if (!bskyPostRef && !post.bskyPostUri) {
+        const persisted = next.shares[post.slug];
+        if (persisted) {
+          // Reuse the share created on a prior run — never mint a duplicate. This
+          // holds even when share isn't enabled this run, so the document keeps
+          // its anchor instead of flapping. `share: false` only blocks minting a
+          // NEW share, not reusing one already created for this slug.
+          bskyPostRef = persisted;
+        } else if (options.share?.enabled && post.share !== false) {
+          const canonicalUrl = `${siteOrigin}/${post.slug}`;
+          try {
+            bskyPostRef = await createSharePost(publisher, post, canonicalUrl, options.share);
+            next.shares[post.slug] = bskyPostRef;
+          } catch (err) {
+            // Share creation is best-effort: publish the document without the
+            // anchor and surface the reason rather than sinking the whole run.
+            warnings.push(
+              `could not create share post for "${post.slug}": ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+        }
+      }
+
+      const record = documentRecord({ ...post, bskyPostRef }, { siteUri: pub.uri });
+      const res = await upsertIfChanged(
+        publisher,
+        DOCUMENT_NSID,
+        rkey,
+        record as unknown as Record<string, unknown>,
+      );
+      documents.push({ slug: post.slug, uri: res.uri, title: post.title, changed: res.changed });
+    } catch (err) {
+      warnings.push(
+        `could not publish "${post.slug}": ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   const pruned: string[] = [];
@@ -223,6 +243,9 @@ export async function publishSite(
     // is an orphan. We delete its document record (if any) and stop tracking it
     // in docs, but deliberately KEEP its share ref — the Bluesky conversation
     // may still have value, so v1 never deletes a pruned doc's share post.
+    // Sharp edge that follows: re-publishing the same slug later silently
+    // reattaches the OLD share post and its whole thread. Use unshare() to
+    // sever that link if a reused slug should start a fresh conversation.
     const known = new Set([...Object.keys(next.docs), ...Object.keys(next.shares)]);
     for (const slug of known) {
       if (keep.has(slug)) continue;
