@@ -11,9 +11,7 @@ import {
   type ParsedPost,
   type PublicationConfig,
 } from "./records.js";
-import { DOCUMENT_NSID, PUBLICATION_NSID, type StrongRef } from "./types.js";
-
-const BSKY_POST_NSID = "app.bsky.feed.post";
+import { BSKY_POST_NSID, DOCUMENT_NSID, PUBLICATION_NSID, type StrongRef } from "./types.js";
 
 /** slug/singleton -> record key. Persist this (e.g. .publish-state.json) between runs. */
 export interface PublishState {
@@ -28,6 +26,13 @@ export interface PublishState {
 }
 
 export const emptyState = (): PublishState => ({ publication: null, docs: {}, shares: {} });
+
+/** Shallow-clone state for mutation; `shares` defaults so pre-shares state files load cleanly. */
+const cloneState = (state: PublishState): PublishState => ({
+  publication: state.publication,
+  docs: { ...state.docs },
+  shares: { ...(state.shares ?? {}) },
+});
 
 export interface PublishResult {
   publicationUri: string;
@@ -120,12 +125,7 @@ export async function publishSite(
   state: PublishState = emptyState(),
   options: PublishOptions = {},
 ): Promise<PublishResult> {
-  const next: PublishState = {
-    publication: state.publication,
-    docs: { ...state.docs },
-    // Default to {} so state files predating the shares field load cleanly.
-    shares: { ...(state.shares ?? {}) },
-  };
+  const next = cloneState(state);
   const warnings: string[] = [];
 
   // Canonical site origin (trailing slash stripped, same as the publication record):
@@ -313,11 +313,7 @@ export async function unshare(
   slug: string,
   state: PublishState,
 ): Promise<UnshareResult> {
-  const next: PublishState = {
-    publication: state.publication,
-    docs: { ...state.docs },
-    shares: { ...(state.shares ?? {}) },
-  };
+  const next = cloneState(state);
   const warnings: string[] = [];
 
   const shareRef = next.shares[slug];

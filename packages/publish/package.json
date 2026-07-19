@@ -2,9 +2,22 @@
   "name": "@hedgerow/publish",
   "version": "0.0.1",
   "description": "Publish markdown posts as standard.site atproto records to a PDS.",
-  "keywords": ["atproto", "at-protocol", "standard.site", "indieweb", "publishing"],
+  "keywords": [
+    "atproto",
+    "at-protocol",
+    "standard.site",
+    "indieweb",
+    "publishing"
+  ],
   "homepage": "https://github.com/crsren/hedgerow/tree/main/packages/publish",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crsren/hedgerow.git",
+    "directory": "packages/publish"
+  },
+  "bugs": "https://github.com/crsren/hedgerow/issues",
   "license": "MIT",
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": {
@@ -15,14 +28,19 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "src", "lexicons"],
+  "files": [
+    "dist",
+    "src",
+    "lexicons"
+  ],
   "publishConfig": {
     "access": "public"
   },
   "scripts": {
     "build": "tsup",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@atproto/api": "^0.20.0",
@@ -35,6 +53,7 @@
     "@atproto/lexicon": "^0.7.7",
     "@hedgerow/tsconfig": "workspace:*",
     "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^2.1.9",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

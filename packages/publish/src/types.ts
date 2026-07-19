@@ -5,6 +5,8 @@
 
 export const PUBLICATION_NSID = "site.standard.publication" as const;
 export const DOCUMENT_NSID = "site.standard.document" as const;
+/** The Bluesky post collection — share posts and comment anchors live here. */
+export const BSKY_POST_NSID = "app.bsky.feed.post" as const;
 
 /** strongRef (com.atproto.repo.strongRef): a specific, verified record. */
 export interface StrongRef {

@@ -31,6 +31,9 @@ jobs:
 
       # Catch packaging mistakes (bad exports, missing files, ESM/CJS slips)
       # before they ship. Runs after build so dist/ exists to inspect.
-      - name: publint @hedgerow/publish
-        working-directory: packages/publish
-        run: npx publint
+      - name: publint all publishable packages
+        run: |
+          for pkg in publish comments react; do
+            echo "── publint @hedgerow/$pkg"
+            (cd "packages/$pkg" && npx publint)
+          done

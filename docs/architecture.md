@@ -7,8 +7,8 @@ Design notes for the Hedgerow monorepo. Kept brief; the source is the source of 
 The two halves of the toolkit — writing records and reading the social layer — stay decoupled.
 
 - **The read side must never depend on the publish side.** A site that only renders comments and likes should pull in none of `@hedgerow/publish`'s write path (OAuth login, `@atproto/api` agents, markdown parsing). Read and write are separate concerns with separate blast radii.
-- **The comments core is framework-agnostic.** `@hedgerow/comments` (planned) does the reading — resolve a post, page its replies and likes off the AppView, shape them into a tree — with no React, no DOM, no framework import.
-- **`@hedgerow/react` and `@hedgerow/embed` are thin wrappers over that core.** They own rendering and interaction only; every fetch/transform decision lives in the core, so all surfaces stay behaviourally identical. React components follow Base UI principles (headless, unstyled, composable). The embed web component is a later wrapper over the same core.
+- **The comments core is framework-agnostic.** `@hedgerow/comments` does the reading — resolve a post, page its replies and likes off the AppView, shape them into a tree — with no React, no DOM, no framework import.
+- **Renderers are thin wrappers over that core.** `@hedgerow/react` owns rendering and interaction only; every fetch/transform decision lives in the core, so all surfaces stay behaviourally identical. React components follow Base UI principles (headless, unstyled, composable). The `@hedgerow/embed` web component (planned) will be a later wrapper over the same core.
 
 ## Auth
 
@@ -34,5 +34,5 @@ Three automated tiers plus a manual gate for the parts that need the real networ
 
 1. **Unit — pure transforms.** `records.test.ts` covers `parsePost`, `toPlainText`, and the record builders. No I/O, fast, the bulk of the coverage. `lexicon-validation.test.ts` additionally validates every record our builders produce against the **vendored lexicon JSON** (via `@atproto/lexicon`) — the drift guard that lets us keep hand-written narrow types instead of full codegen. (Note: the vendored docs carry an extra top-level `$type: "com.atproto.lexicon.schema"` key from how they're stored in the authority's repo; `@atproto/lexicon`'s parser currently ignores unknown keys, but if it ever turns strict, loading will fail here first.)
 2. **Integration — in-process-PDS round trip.** `roundtrip.test.ts` boots a real PDS in-process via `@atproto/dev-env`, publishes, and reads back — exercising the whole write path (auth surface, upsert, idempotency, `updatedAt` semantics) with no credentials, Docker, or domain.
-3. **Fixtures — AppView reads + a scheduled live smoke.** The comments read side (planned) is tested against recorded AppView fixtures for determinism, with one scheduled live smoke test against the real `api.bsky.app` to catch upstream drift.
+3. **Fixtures — AppView reads + an opt-in live smoke.** The comments read side is tested against recorded AppView fixtures for determinism, plus an opt-in live smoke suite (`LIVE_SMOKE=1`) against the real `public.api.bsky.app` to catch upstream drift.
 4. **Manual go-live checklist.** OAuth login, custom-domain handle resolution, and Bluesky share-preview crawling depend on live third parties and a browser; they are verified by hand before a real launch rather than in CI.

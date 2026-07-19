@@ -2,9 +2,23 @@
   "name": "@hedgerow/comments",
   "version": "0.0.1",
   "description": "Framework-agnostic read core for Bluesky comments and likes: resolve a post, page its replies and likes off the public AppView, shape them into a tree.",
-  "keywords": ["atproto", "at-protocol", "bluesky", "comments", "likes", "isomorphic"],
+  "keywords": [
+    "atproto",
+    "at-protocol",
+    "bluesky",
+    "comments",
+    "likes",
+    "isomorphic"
+  ],
   "homepage": "https://github.com/crsren/hedgerow/tree/main/packages/comments",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crsren/hedgerow.git",
+    "directory": "packages/comments"
+  },
+  "bugs": "https://github.com/crsren/hedgerow/issues",
   "license": "MIT",
+  "sideEffects": false,
   "type": "module",
   "exports": {
     ".": {
@@ -15,7 +29,10 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "publishConfig": {
     "access": "public"
   },
@@ -23,11 +40,13 @@
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "capture-fixtures": "node scripts/capture-fixtures.mjs"
+    "capture-fixtures": "node scripts/capture-fixtures.mjs",
+    "coverage": "vitest run --coverage"
   },
   "devDependencies": {
     "@hedgerow/tsconfig": "workspace:*",
     "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^2.1.9",
     "tsup": "^8.3.5",
     "typescript": "^5.7.2",
     "vitest": "^2.1.8"

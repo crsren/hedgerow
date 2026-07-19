@@ -4,9 +4,8 @@
 // record (SLIMS-55): the frontmatter carries a bare link to the canonical
 // Bluesky post; publishSite resolves its current cid here before writing.
 import { resolveDid, resolvePds } from "./read.js";
-import type { StrongRef } from "./types.js";
+import { BSKY_POST_NSID, type StrongRef } from "./types.js";
 
-const POST_COLLECTION = "app.bsky.feed.post";
 
 export interface ResolveBskyPostRefOptions {
   /**
@@ -33,9 +32,12 @@ export function parseBskyPostUri(uriOrUrl: string): ParsedBskyPostUri {
   const input = uriOrUrl.trim();
 
   if (input.startsWith("at://")) {
-    const [authority, collection, rkey] = input.slice("at://".length).split("/");
-    if (!authority || collection !== POST_COLLECTION || !rkey) {
-      throw new Error(`not an ${POST_COLLECTION} at-uri: ${uriOrUrl}`);
+    const [authority, collection, rawRkey] = input.slice("at://".length).split("/");
+    // A pasted at-uri can drag along ?query/#fragment noise — strip it from the
+    // rkey (parity with the comments package's parser).
+    const rkey = rawRkey?.split(/[?#]/)[0];
+    if (!authority || collection !== BSKY_POST_NSID || !rkey) {
+      throw new Error(`not an ${BSKY_POST_NSID} at-uri: ${uriOrUrl}`);
     }
     return { authority, rkey };
   }
@@ -72,7 +74,7 @@ export async function resolveBskyPostRef(
 
   const u = new URL(`${pds}/xrpc/com.atproto.repo.getRecord`);
   u.searchParams.set("repo", did);
-  u.searchParams.set("collection", POST_COLLECTION);
+  u.searchParams.set("collection", BSKY_POST_NSID);
   u.searchParams.set("rkey", rkey);
   const res = await fetchImpl(u);
   if (!res.ok) {
@@ -82,5 +84,5 @@ export async function resolveBskyPostRef(
   }
   const data = (await res.json()) as { uri?: string; cid?: string };
   if (!data.cid) throw new Error(`getRecord for ${did}/${rkey} returned no cid`);
-  return { uri: `at://${did}/${POST_COLLECTION}/${rkey}`, cid: data.cid };
+  return { uri: `at://${did}/${BSKY_POST_NSID}/${rkey}`, cid: data.cid };
 }

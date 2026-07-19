@@ -2,6 +2,7 @@ node_modules/
 dist/
 .turbo/
 .astro/
+coverage/
 *.tsbuildinfo
 
 # local publish state (slug -> record rkey); real sites commit their own
