@@ -262,7 +262,7 @@ export default function EditorIsland() {
 
               <span className="hedgerow-edit-label">Body</span>
               <Editor.Body
-                render={(slot) => (
+                slot={(slot) => (
                   <TiptapMarkdownEditor value={slot.value} onChange={slot.onChange} />
                 )}
               />

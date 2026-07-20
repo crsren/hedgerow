@@ -1,6 +1,7 @@
+import * as React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render, act, waitFor, within, fireEvent } from "@testing-library/react";
-import { Comments, useCommentsContext, type OptimisticReplyInput } from "../src/index";
+import { Comments, useComments, useCommentsContext, type OptimisticReplyInput } from "../src/index";
 import type { Comment, RawGetPostThreadResponse } from "@hedgerow/comments";
 import { loadFixture, jsonResponse, stubFetch, deferred, ROOT_URI } from "./helpers";
 
@@ -17,7 +18,7 @@ function Thread(props: React.ComponentProps<typeof Comments.Root>) {
           <Comments.Author />
           <Comments.Content />
           <Comments.Timestamp />
-          <Comments.Likes />
+          <Comments.LikeCount />
           <Comments.Labels />
           <Comments.Replies />
         </Comments.Item>
@@ -359,8 +360,8 @@ describe("Comments accessibility", () => {
   });
 });
 
-describe("Comments.LikeButton / Comments.ReplyButton (per-comment interactions, SLIMS-69)", () => {
-  it("LikeButton is disabled and ReplyButton unrendered when onCommentAction is omitted (no reader session)", async () => {
+describe("Comments.LikeButton / Comments.ReplyButton (per-comment interactions, SLIMS-69/70)", () => {
+  it("LikeButton is disabled and ReplyButton unrendered when the per-verb handlers are omitted (no reader session)", async () => {
     const stub = threadStub("getPostThread");
     const { container } = render(
       <Comments.Root post={ROOT_URI} fetchImpl={stub.fetch}>
@@ -378,15 +379,35 @@ describe("Comments.LikeButton / Comments.ReplyButton (per-comment interactions, 
     expect(container.querySelector('[data-testid="reply"]')).toBeNull();
   });
 
-  it("LikeButton calls onCommentAction with the node and toggles optimistically; ReplyButton fires 'reply'", async () => {
+  it("LikeButton is still disabled when only ONE of onLikeComment/onUnlikeComment is set", async () => {
     const stub = threadStub("getPostThread");
-    const onCommentAction = vi.fn(async () => {});
+    const { container } = render(
+      <Comments.Root post={ROOT_URI} fetchImpl={stub.fetch} onLikeComment={vi.fn()} isCommentLiked={() => false}>
+        <Comments.List>
+          <Comments.Item>
+            <Comments.LikeButton data-testid="like" />
+            <Comments.Replies />
+          </Comments.Item>
+        </Comments.List>
+      </Comments.Root>,
+    );
+    await waitFor(() => expect(container.querySelector('[data-testid="like"]')).not.toBeNull());
+    expect((container.querySelector('[data-testid="like"]') as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it("LikeButton calls onLikeComment with the node and toggles optimistically; ReplyButton fires onReplyToComment", async () => {
+    const stub = threadStub("getPostThread");
+    const onLikeComment = vi.fn(async () => {});
+    const onUnlikeComment = vi.fn(async () => {});
+    const onReplyToComment = vi.fn();
     const isCommentLiked = () => false;
     const { container } = render(
       <Comments.Root
         post={ROOT_URI}
         fetchImpl={stub.fetch}
-        onCommentAction={onCommentAction}
+        onLikeComment={onLikeComment}
+        onUnlikeComment={onUnlikeComment}
+        onReplyToComment={onReplyToComment}
         isCommentLiked={isCommentLiked}
       >
         <Comments.List>
@@ -404,11 +425,12 @@ describe("Comments.LikeButton / Comments.ReplyButton (per-comment interactions, 
 
     fireEvent.click(like);
     expect(like.getAttribute("data-liked")).toBe("");
-    await waitFor(() => expect(onCommentAction).toHaveBeenCalledWith("like", expect.objectContaining({ type: "comment" })));
+    await waitFor(() => expect(onLikeComment).toHaveBeenCalledWith(expect.objectContaining({ type: "comment" })));
+    expect(onUnlikeComment).not.toHaveBeenCalled();
 
     const reply = container.querySelector('[data-testid="reply"]') as HTMLButtonElement;
     fireEvent.click(reply);
-    expect(onCommentAction).toHaveBeenCalledWith("reply", expect.objectContaining({ type: "comment" }));
+    expect(onReplyToComment).toHaveBeenCalledWith(expect.objectContaining({ type: "comment" }));
   });
 
   it("reflects isCommentLiked's per-node answer", async () => {
@@ -418,7 +440,8 @@ describe("Comments.LikeButton / Comments.ReplyButton (per-comment interactions, 
       <Comments.Root
         post={ROOT_URI}
         fetchImpl={stub.fetch}
-        onCommentAction={vi.fn()}
+        onLikeComment={vi.fn()}
+        onUnlikeComment={vi.fn()}
         isCommentLiked={(node: Comment) => likedUris.has(node.uri)}
       >
         <Comments.List>
@@ -434,10 +457,44 @@ describe("Comments.LikeButton / Comments.ReplyButton (per-comment interactions, 
     expect(first.getAttribute("aria-pressed")).toBe("false");
     expect(first.hasAttribute("data-liked")).toBe(false);
   });
+
+  it("chains a consumer-supplied onClick (via render's element-clone form) with the computed toggle instead of dropping it", async () => {
+    const stub = threadStub("getPostThread");
+    const order: string[] = [];
+    const onLikeComment = vi.fn(async () => {
+      order.push("computed");
+    });
+    const { container } = render(
+      <Comments.Root
+        post={ROOT_URI}
+        fetchImpl={stub.fetch}
+        onLikeComment={onLikeComment}
+        onUnlikeComment={vi.fn()}
+        isCommentLiked={() => false}
+      >
+        <Comments.List>
+          <Comments.Item>
+            <Comments.LikeButton
+              data-testid="like"
+              render={<button onClick={() => order.push("consumer")} />}
+            />
+            <Comments.Replies />
+          </Comments.Item>
+        </Comments.List>
+      </Comments.Root>,
+    );
+    await waitFor(() => expect(container.querySelector('[data-testid="like"]')).not.toBeNull());
+    fireEvent.click(container.querySelector('[data-testid="like"]')!);
+    await waitFor(() => expect(onLikeComment).toHaveBeenCalled());
+    // Both fired, ours first — the consumer's onClick (given via `render`'s
+    // element-clone form) was never silently dropped by the part's own
+    // computed toggle handler (the old bug: computed spread after ...rest).
+    expect(order).toEqual(["computed", "consumer"]);
+  });
 });
 
-describe("Comments optimistic replies (data-state / data-entering, SLIMS-69)", () => {
-  it("addOptimisticReply inserts a pending node immediately, marked data-state=pending", async () => {
+describe("Comments optimistic replies (data-delivery / data-entering, SLIMS-69/70)", () => {
+  it("addOptimisticReply inserts a pending node immediately, marked data-delivery=pending", async () => {
     const stub = threadStub("getPostThread");
     let addOptimisticReply!: (input: OptimisticReplyInput) => void;
 
@@ -469,7 +526,7 @@ describe("Comments optimistic replies (data-state / data-entering, SLIMS-69)", (
 
     const node = await findByText("hot off the press");
     const item = node.closest("[data-comment]")!;
-    expect(item.getAttribute("data-state")).toBe("pending");
+    expect(item.getAttribute("data-delivery")).toBe("pending");
   });
 
   it("flips a stale optimistic entry to unconfirmed after optimisticGiveUpAfter refetches without seeing it", async () => {
@@ -509,24 +566,175 @@ describe("Comments optimistic replies (data-state / data-entering, SLIMS-69)", (
     });
     const node = await findByText("will this ever show up server-side");
     const item = () => node.closest("[data-comment]")!;
-    expect(item().getAttribute("data-state")).toBe("pending");
+    expect(item().getAttribute("data-delivery")).toBe("pending");
 
     // Two refetches, neither of which contain the new uri (fixture is static).
     await act(async () => refetch());
     await act(async () => refetch());
 
-    await waitFor(() => expect(item().getAttribute("data-state")).toBe("unconfirmed"));
+    await waitFor(() => expect(item().getAttribute("data-delivery")).toBe("unconfirmed"));
     // Never removed — the node is still right there in the DOM.
     expect(container.contains(node)).toBe(true);
   });
 
-  it("Comments.Item carries data-entering on first mount, cleared one frame later", async () => {
+  it("the FIRST population never carries data-entering, even transiently (fetched on mount)", async () => {
     const stub = threadStub("getPostThread");
     const { container } = render(<Thread post={ROOT_URI} fetchImpl={stub.fetch} />);
     await waitFor(() => expect(container.querySelector("[data-comment]")).not.toBeNull());
+    // Absent from the very first render this item exists in — not "present
+    // then cleared a frame later" (the old v1 behavior for a fresh load) —
+    // and stays absent (nothing ever schedules a clear for it).
+    for (const item of container.querySelectorAll("[data-comment]")) {
+      expect(item.hasAttribute("data-entering")).toBe(false);
+    }
+    await new Promise((r) => setTimeout(r, 50));
+    for (const item of container.querySelectorAll("[data-comment]")) {
+      expect(item.hasAttribute("data-entering")).toBe(false);
+    }
+  });
+
+  it("the FIRST population never carries data-entering when seeded via initialData either — SSR output must never carry it", async () => {
+    const seeded = await import("@hedgerow/comments").then((m) =>
+      m.fetchThread(ROOT_URI, { fetchImpl: threadStub("getPostThread").fetch, preResolved: true }),
+    );
+    const { container } = render(<Thread post={ROOT_URI} initialData={seeded} />);
+    // Synchronous — this is the very first (and, for a seeded root, only)
+    // render; no waitFor needed since there's no fetch to await.
     const item = container.querySelector("[data-comment]")!;
-    // rAF-scheduled removal — jsdom's rAF runs on the next animation frame tick.
+    expect(item).not.toBeNull();
+    expect(item.hasAttribute("data-entering")).toBe(false);
+  });
+
+  it("a node appearing AFTER the tree has settled DOES carry data-entering, cleared a couple of frames later (double-rAF)", async () => {
+    const stub = threadStub("getPostThread");
+    let addOptimisticReply!: (input: OptimisticReplyInput) => void;
+    function Capture() {
+      addOptimisticReply = useCommentsContext().addOptimisticReply;
+      return null;
+    }
+    const { container, findByText } = render(
+      <Comments.Root post={ROOT_URI} fetchImpl={stub.fetch}>
+        <Capture />
+        <Comments.List>
+          <Comments.Item>
+            <Comments.Content />
+          </Comments.Item>
+        </Comments.List>
+      </Comments.Root>,
+    );
+    // The tree has now settled (first population committed and shown).
+    await waitFor(() => expect(container.querySelector("[data-comment]")).not.toBeNull());
+
+    act(() => {
+      addOptimisticReply({
+        ref: { uri: "at://did:plc:me/app.bsky.feed.post/entering1", cid: "bafyentering1" },
+        parentUri: ROOT_URI,
+        text: "a genuinely new row",
+        author: { did: "did:plc:me", handle: "me.bsky.social" },
+      });
+    });
+
+    const node = await findByText("a genuinely new row");
+    const item = node.closest("[data-comment]")!;
+    // Present immediately (synchronously) — this row is NOT part of the
+    // first population, so it starts entering.
+    expect(item.hasAttribute("data-entering")).toBe(true);
+    // Cleared a couple of animation frames later (double-rAF, not a single
+    // one — see Comments.Item's own doc comment on why).
     await waitFor(() => expect(item.hasAttribute("data-entering")).toBe(false));
+  });
+
+  it("the confirm/unconfirm sweep is pure under React Strict Mode's double-invoked updaters (SLIMS-70)", async () => {
+    // Regression for the old bug: setJustConfirmed + setTimeout scheduling
+    // used to live INSIDE the setOptimistic(prev => ...) updater. React 18
+    // Strict Mode double-invokes a state updater function (not just mount
+    // effects) to surface exactly this kind of impurity — under the old
+    // code, confirming a reply here would have scheduled the "clear the
+    // flash" timer TWICE. The fix hoists the computation out into a pure
+    // read of a ref, then plain setState/setTimeout statements — so double
+    // invocation of the (now side-effect-free) updater is harmless, and this
+    // test just has to prove the confirm flow still behaves correctly with
+    // Strict Mode's extra invocation in play, without erroring or getting
+    // stuck.
+    const body = loadFixture<RawGetPostThreadResponse>("getPostThread") as RawGetPostThreadResponse & {
+      thread: { replies: unknown[] };
+    };
+    const newUri = "at://did:plc:me/app.bsky.feed.post/strict-confirm";
+    const confirmedBody = {
+      ...body,
+      thread: {
+        ...body.thread,
+        replies: [
+          ...body.thread.replies,
+          {
+            $type: "app.bsky.feed.defs#threadViewPost",
+            post: {
+              uri: newUri,
+              cid: "bafystrictconfirm",
+              author: { did: "did:plc:me", handle: "me.bsky.social" },
+              record: {
+                $type: "app.bsky.feed.post",
+                text: "confirmed under strict mode",
+                createdAt: new Date().toISOString(),
+              },
+              likeCount: 0,
+              replyCount: 0,
+              repostCount: 0,
+              indexedAt: new Date().toISOString(),
+            },
+            replies: [],
+          },
+        ],
+      },
+    };
+    const stub = stubFetch((method) => {
+      if (method !== "app.bsky.feed.getPostThread") return jsonResponse({}, 501);
+      return jsonResponse(confirmedBody as unknown as RawGetPostThreadResponse);
+    });
+
+    let addOptimisticReply!: (input: OptimisticReplyInput) => void;
+    let refetch!: () => void;
+    function Capture() {
+      const ctx = useCommentsContext();
+      addOptimisticReply = ctx.addOptimisticReply;
+      refetch = ctx.refetch;
+      return null;
+    }
+
+    const { container, findByText } = render(
+      <React.StrictMode>
+        <Comments.Root post={ROOT_URI} fetchImpl={stub.fetch}>
+          <Capture />
+          <Comments.List>
+            <Comments.Item>
+              <Comments.Content />
+            </Comments.Item>
+          </Comments.List>
+        </Comments.Root>
+      </React.StrictMode>,
+    );
+    await waitFor(() => expect(container.querySelector("[data-comment]")).not.toBeNull());
+
+    act(() => {
+      addOptimisticReply({
+        ref: { uri: newUri, cid: "bafystrictconfirm" },
+        parentUri: ROOT_URI,
+        text: "confirmed under strict mode",
+        author: { did: "did:plc:me", handle: "me.bsky.social" },
+      });
+    });
+    const node = await findByText("confirmed under strict mode");
+
+    await act(async () => refetch());
+
+    // Confirmed, flashes briefly, then settles to an ordinary node — exactly
+    // once, not twice, and never gets stuck mid-flash.
+    await waitFor(() => expect(node.closest("[data-comment]")!.getAttribute("data-delivery")).toBe("confirmed"));
+    // The flash window is 1.2s (CONFIRMED_FLASH_MS) — past waitFor's default timeout.
+    await waitFor(() => expect(node.closest("[data-comment]")!.hasAttribute("data-delivery")).toBe(false), {
+      timeout: 2000,
+    });
+    expect(container.contains(node)).toBe(true);
   });
 });
 
@@ -551,5 +759,72 @@ describe("Comments render-prop and data-attributes", () => {
     // Our className merged with the render element's, and data-* came through.
     expect(anchor.tagName).toBe("A");
     expect(anchor.getAttribute("data-handle")).toBeTruthy();
+  });
+});
+
+describe("Comments.Provider + Comments.ItemScope (SLIMS-70 custom-tree escape hatch)", () => {
+  it("mounts leaf parts against a consumer's own useComments() call, via a fully custom tree", async () => {
+    const stub = threadStub("getPostThread");
+
+    function CustomTree() {
+      const value = useComments({ post: ROOT_URI, fetchImpl: stub.fetch });
+      if (!value.isSuccess) return <p>Loading…</p>;
+      return (
+        <Comments.Provider value={value}>
+          {value.comments.map((node) => (
+            <Comments.ItemScope key={node.uri} node={node}>
+              <div data-testid="custom-item">
+                <Comments.Author />
+                <Comments.Timestamp />
+                <Comments.Content />
+                {/* Recurses using the SAME children (this whole div, Replies
+                    included) as the template for nested replies — same
+                    self-referential pattern Comments.Item's own children use. */}
+                <Comments.Replies />
+              </div>
+            </Comments.ItemScope>
+          ))}
+        </Comments.Provider>
+      );
+    }
+
+    const { container, findAllByTestId } = render(<CustomTree />);
+    // The whole tree (top-level + nested replies) recurses synchronously
+    // within the one render, so all of it is present as soon as anything is:
+    // 6 top-level comments from the fixture, PLUS its nested replies (fixture
+    // nests ≥ 2 deep) via Comments.Replies inside each ItemScope's template.
+    const items = await findAllByTestId("custom-item");
+    expect(items.length).toBeGreaterThan(6);
+    expect(container.querySelector("[data-handle]")).not.toBeNull();
+  });
+
+  it("Comments.Provider forwards the per-verb handlers to leaf parts the same as Comments.Root", async () => {
+    const stub = threadStub("getPostThread");
+    const onLikeComment = vi.fn(async () => {});
+    const onUnlikeComment = vi.fn(async () => {});
+
+    function CustomTree() {
+      const value = useComments({ post: ROOT_URI, fetchImpl: stub.fetch });
+      if (!value.isSuccess || value.comments.length === 0) return null;
+      const first = value.comments[0]!;
+      return (
+        <Comments.Provider
+          value={value}
+          onLikeComment={onLikeComment}
+          onUnlikeComment={onUnlikeComment}
+          isCommentLiked={() => false}
+        >
+          <Comments.ItemScope node={first}>
+            <Comments.LikeButton data-testid="like" />
+          </Comments.ItemScope>
+        </Comments.Provider>
+      );
+    }
+
+    const { findByTestId } = render(<CustomTree />);
+    const like = await findByTestId("like");
+    expect((like as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(like);
+    await waitFor(() => expect(onLikeComment).toHaveBeenCalled());
   });
 });

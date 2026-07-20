@@ -65,8 +65,9 @@ export async function logIn(page: Page, handle: string, password: string, slugPa
 /**
  * Scroll the comments island into view, retrying on detachment. The island
  * re-renders right after hydration when an SSR thread snapshot revalidates
- * (SLIMS-69's RevalidateOnMount) — a plain scrollIntoViewIfNeeded() can catch
- * the node mid-replacement and throw "Element is not attached to the DOM".
+ * (Comments.Root/Likes.Root's `revalidateOnMount`, SLIMS-70) — a plain
+ * scrollIntoViewIfNeeded() can catch the node mid-replacement and throw
+ * "Element is not attached to the DOM".
  */
 export async function scrollToComments(page: Page, selector = "section.hedgerow"): Promise<void> {
   await expect(async () => {

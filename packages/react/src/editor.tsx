@@ -53,7 +53,7 @@ export const Root = React.forwardRef<HTMLFormElement, EditorRootProps>(function 
     isLoading: value.isLoading,
     isDirty: value.isDirty,
     isSaving: value.isSaving,
-    isSaved: value.status === "saved",
+    isSaved: value.isSaved,
     isError: value.isError,
   };
 
@@ -74,7 +74,7 @@ export const Root = React.forwardRef<HTMLFormElement, EditorRootProps>(function 
         loading: value.isLoading,
         dirty: value.isDirty,
         saving: value.isSaving,
-        saved: value.status === "saved",
+        saved: value.isSaved,
         error: value.isError,
       }),
       children,
@@ -122,7 +122,7 @@ export const Title = React.forwardRef<HTMLInputElement, EditorTitleProps>(functi
 
 // ── Body (headless slot) ────────────────────────────────────────────────────
 
-/** What `Editor.Body`'s `render` is called with: the markdown string and a setter — NOT DOM props. */
+/** What `Editor.Body`'s `slot` is called with: the markdown string and a setter — NOT DOM props. */
 export interface EditorBodySlot {
   value: string;
   onChange: (value: string) => void;
@@ -135,30 +135,39 @@ export interface EditorBodyState {
 }
 
 export interface EditorBodyProps
-  extends Omit<React.ComponentPropsWithoutRef<"textarea">, "className" | "style" | "children" | "value" | "onChange"> {
-  /** className/style for the DEFAULT `<textarea>` only — ignored once `render` takes over. */
+  extends Omit<
+    React.ComponentPropsWithoutRef<"textarea">,
+    // `slot` is also a standard HTML/Web Components attribute name on every
+    // intrinsic element — omitted here so our own (unrelated) `slot` prop
+    // below doesn't collide with it.
+    "className" | "style" | "children" | "value" | "onChange" | "slot"
+  > {
+  /** className/style for the DEFAULT `<textarea>` only — ignored once `slot` takes over. */
   className?: ClassNameProp<EditorBodyState>;
   style?: StyleProp<EditorBodyState>;
   /**
    * The mount point for a real rich-text editor (the demo mounts Tiptap
-   * here). Called with `{ value, onChange }` for the markdown string — NOT
-   * this library's usual `(props, state) => ReactElement` contract, since a
-   * non-DOM editor component has nothing sensible to do with spread DOM
-   * attributes. Omit it to get the default plain `<textarea>` instead — that
+   * here). Called with `{ value, onChange }` for the markdown string —
+   * deliberately named `slot`, NOT `render`: every other part's `render`
+   * prop means "spread these DOM props onto whatever element you return"
+   * (see `renderElement`'s contract), but a non-DOM editor component has
+   * nothing sensible to do with spread DOM attributes — a prop named `render`
+   * that means something different here would be the confusing part, not the
+   * rename. Omit it to get the default plain `<textarea>` instead — that
    * default IS the full extent of what this package renders for a body; it
    * never ships an editor of its own.
    */
-  render?: (slot: EditorBodySlot) => React.ReactNode;
+  slot?: (slot: EditorBodySlot) => React.ReactNode;
 }
 
 export const Body = React.forwardRef<HTMLTextAreaElement, EditorBodyProps>(function EditorBody(
-  { render, className, style, ...rest },
+  { slot, className, style, ...rest },
   ref,
 ) {
   const ctx = useEditorContext();
 
-  if (render) {
-    return <>{render({ value: ctx.markdown, onChange: ctx.setMarkdown })}</>;
+  if (slot) {
+    return <>{slot({ value: ctx.markdown, onChange: ctx.setMarkdown })}</>;
   }
 
   const state: EditorBodyState = { value: ctx.markdown, isLoading: ctx.isLoading, isSaving: ctx.isSaving };
@@ -225,14 +234,14 @@ export type EditorStatusProps = PartProps<EditorStatusState, "div">;
 
 const DEFAULT_STATUS_LABEL: Record<EditorStatus, string> = {
   loading: "Loading…",
-  editing: "",
+  idle: "",
   dirty: "Unsaved changes",
   saving: "Saving…",
   saved: "Saved",
   error: "Couldn't save",
 };
 
-/** Always-rendered status readout (loading/editing/dirty/saving/saved/error). Exposes the save error via `state.error` and `role="alert"` when errored. */
+/** Always-rendered status readout (loading/idle/dirty/saving/saved/error). Exposes the save error via `state.error` and `role="alert"` when errored. */
 export const Status = React.forwardRef<HTMLDivElement, EditorStatusProps>(function EditorStatusPart(
   { render, className, style, children, ...rest },
   ref,

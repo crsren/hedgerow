@@ -33,10 +33,8 @@ import {
   Reply,
   mergeRefs,
   useCommentsContext,
-  useLikesContext,
   useReplyContext,
   type Comment,
-  type CommentAction,
   type LikesResult,
   type ThreadResult,
 } from "@hedgerow/react";
@@ -284,8 +282,8 @@ function PostLikeButton() {
  * nothing — purely a `useCommentsContext()` + effect wrapper, which is why it
  * has to live INSIDE `<Comments.Root>` even though the cache itself is owned
  * by the top-level `CommentThread` component (passed down as props) so
- * `onCommentAction`/`isCommentLiked` — which `Comments.Root` itself needs —
- * can read it too.
+ * `onLikeComment`/`onUnlikeComment`/`isCommentLiked` — which `Comments.Root`
+ * itself needs — can read it too.
  */
 function LikeStatusPrefetch({
   likedByUri,
@@ -349,40 +347,6 @@ function PendingCommentLikeApplier({
     });
   }, [session, data, pendingLikeSubject, consumePendingLike, setLikedByUri]);
 
-  return null;
-}
-
-/**
- * The client-side half of "render immediately from snapshot, then revalidate
- * on mount" (SLIMS-69's SSR thread snapshot). `useComments`'s `initialData`
- * seed deliberately skips only the very first FETCH on mount (see its own
- * tests/docs) — it never re-fetches on its own afterwards. That's fine when
- * the snapshot is fresh, but Astro's static `getStaticPaths` output (where
- * `[...slug].astro` fetches `initialThread`) is computed once per dev/build
- * run, not per request — verified by hand: liking a post updates the live
- * thread immediately client-side, but a bare page reload right after showed
- * the STALE pre-like count until this component was added. One refetch()
- * right after mount closes that gap without touching useComments' own
- * (tested, relied-upon) skip-the-first-fetch contract.
- */
-function RevalidateCommentsOnMount({ hadSnapshot }: { hadSnapshot: boolean }) {
-  const { refetch } = useCommentsContext();
-  useEffect(() => {
-    if (hadSnapshot) refetch();
-    // Deliberately once, right after mount — not on every refetch identity
-    // change (post/maxDepth churn already re-triggers useComments' own effect).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-  return null;
-}
-
-/** Likes.Root's counterpart to RevalidateCommentsOnMount, same reasoning. */
-function RevalidateLikesOnMount({ hadSnapshot }: { hadSnapshot: boolean }) {
-  const { refetch } = useLikesContext();
-  useEffect(() => {
-    if (hadSnapshot) refetch();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
   return null;
 }
 
@@ -586,39 +550,8 @@ function ReplyBox({
   initialDraft: string;
   draftRef: MutableRefObject<string>;
 }) {
-  const { data, root, addOptimisticReply, refetch, deliveryStateOf } = useCommentsContext();
+  const { data, root, addOptimisticReply } = useCommentsContext();
   const { session, setSession, openAuthGate } = useReaderSession();
-
-  // Give the AppView/shim a few seconds to index a just-posted reply,
-  // confirming/unconfirming useComments' own optimistic entry as each
-  // refetch lands (see @hedgerow/react's README "Optimistic replies"). Not
-  // awaited by handleSubmit — the reply is already visible the instant that
-  // returns (via addOptimisticReply), so there's no reason to keep the
-  // composer in a submitting state for these extra seconds.
-  const retryTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
-  useEffect(() => () => retryTimers.current.forEach(clearTimeout), []);
-  // Each retry re-checks whether the reply is still unconfirmed before
-  // refetching — once a refetch confirms it, the remaining timers become
-  // no-ops instead of firing extra fetches (each of which used to cost a
-  // visible re-render). Refs, not state: the timer closures must see the
-  // CURRENT deliveryStateOf, not the one from the render that armed them.
-  const pendingUriRef = useRef<string | null>(null);
-  const deliveryStateOfRef = useRef(deliveryStateOf);
-  deliveryStateOfRef.current = deliveryStateOf;
-  const scheduleConfirmRetries = useCallback(
-    (uri: string) => {
-      pendingUriRef.current = uri;
-      for (const delayMs of [2000, 4000, 6000]) {
-        retryTimers.current.push(
-          setTimeout(() => {
-            const pending = pendingUriRef.current;
-            if (pending && deliveryStateOfRef.current(pending) === "pending") refetch();
-          }, delayMs),
-        );
-      }
-    },
-    [refetch],
-  );
 
   // No strongRef to reply against yet (still loading, or the root itself is a
   // deleted/blocked stub) — nothing sensible to render.
@@ -649,7 +582,13 @@ function ReplyBox({
       },
     });
     onCancelReplyTarget(); // back to replying-to-root once this send is in flight
-    scheduleConfirmRetries(ref.uri);
+    // Give the AppView/shim a few seconds to index the write — confirming/
+    // unconfirming this optimistic entry as each refetch lands (see
+    // @hedgerow/react's README "Optimistic replies") — is now built into
+    // useComments' own addOptimisticReply via its confirmRetryDelays option
+    // (default [2000, 4000, 6000], same schedule this demo used to hand-roll
+    // here). Not awaited: the reply is already visible the instant this
+    // function returns.
   }
 
   if (session === undefined) return null; // avoid a signed-out flash while resuming
@@ -795,39 +734,47 @@ export default function CommentThread({
   const openAuthGate = useCallback((pendingAction: PendingAction) => setAuthGate(pendingAction), []);
   const consumePendingLike = useCallback(() => setPendingLikeSubject(null), []);
 
-  // The single per-comment interaction entrypoint Comments.LikeButton /
-  // Comments.ReplyButton call (via Comments.Root's onCommentAction) — see
-  // @hedgerow/react's README "Per-comment interactions". react itself never
-  // imports @hedgerow/reader; this is where the two meet. Passed
-  // UNCONDITIONALLY now (not `session ? handleCommentAction : undefined`) —
-  // see the README's "Auth on demand" recipe for why gating the PROP made
-  // Comments.ReplyButton render nothing and Comments.LikeButton hard-disable,
-  // which is the opposite of interaction-first.
-  const handleCommentAction = useCallback(
-    async (action: CommentAction, node: Comment): Promise<void> => {
-      if (action === "reply") {
-        // Free — aiming the composer at a specific comment needs no session;
-        // only the eventual submit (ReplyBox's handleSubmit) is gated.
-        setReplyTarget({ uri: node.uri, cid: node.cid, handle: node.author.handle });
-        return;
-      }
+  // The three per-comment interaction entrypoints Comments.LikeButton /
+  // Comments.ReplyButton call (via Comments.Root's onLikeComment /
+  // onUnlikeComment / onReplyToComment) — see @hedgerow/react's README
+  // "Per-comment interactions". react itself never imports @hedgerow/reader;
+  // this is where the two meet. Passed UNCONDITIONALLY now (not
+  // `session ? handleLikeComment : undefined`) — see the README's "Auth on
+  // demand" recipe for why gating the PROP made Comments.ReplyButton render
+  // nothing and Comments.LikeButton hard-disable, which is the opposite of
+  // interaction-first.
+  const handleReplyToComment = useCallback((node: Comment) => {
+    // Free — aiming the composer at a specific comment needs no session;
+    // only the eventual submit (ReplyBox's handleSubmit) is gated.
+    setReplyTarget({ uri: node.uri, cid: node.cid, handle: node.author.handle });
+  }, []);
+
+  const handleLikeComment = useCallback(
+    async (node: Comment): Promise<void> => {
       if (!session) {
-        // isCommentLiked reports `false` (never `undefined`) while signed
-        // out — see below — so Comments.LikeButton only ever offers "like"
-        // here; "unlike" is unreachable without a session that already liked
-        // something to begin with.
         openAuthGate({ kind: "like", subject: { uri: node.uri, cid: node.cid } });
         // Same rejection-triggers-rollback contract PostLikeButton's onLike
         // uses above — see its comment for why this is deliberate, not a
         // leaked error.
         throw new Error("hedgerow: signed out — opened the auth gate instead of liking");
       }
-      if (action === "like") {
-        const like = await reader.like({ uri: node.uri, cid: node.cid });
-        setLikedByUri((prev) => ({ ...prev, [node.uri]: like.uri }));
-        return;
+      const like = await reader.like({ uri: node.uri, cid: node.cid });
+      setLikedByUri((prev) => ({ ...prev, [node.uri]: like.uri }));
+    },
+    [session, openAuthGate],
+  );
+
+  const handleUnlikeComment = useCallback(
+    async (node: Comment): Promise<void> => {
+      // isCommentLiked reports `false` (never `undefined`) while signed out
+      // — see below — so Comments.LikeButton only ever offers "like" in that
+      // state; this branch is unreachable without a session that already
+      // liked something to begin with. Guarded anyway for symmetry with
+      // handleLikeComment.
+      if (!session) {
+        openAuthGate({ kind: "like", subject: { uri: node.uri, cid: node.cid } });
+        throw new Error("hedgerow: signed out — opened the auth gate instead of liking");
       }
-      // action === "unlike"
       setLikedByUri((prev) => {
         const likeUri = prev[node.uri];
         if (likeUri) void reader.unlike(likeUri);
@@ -844,7 +791,7 @@ export default function CommentThread({
       // useLikeButton), which would hard-disable the toggle. A signed-out
       // reader isn't in an unresolved state: they're confidently not shown as
       // having liked anything, and the button needs to stay clickable so a
-      // click can open the auth gate (handleCommentAction above).
+      // click can open the auth gate (handleLikeComment above).
       if (!session) return false;
       return node.uri in likedByUri ? likedByUri[node.uri] != null : undefined;
     },
@@ -867,8 +814,14 @@ export default function CommentThread({
         post={post}
         appView={appViewOverride}
         initialData={initialLikes}
+        // Astro's static getStaticPaths snapshot (initialLikes) is computed
+        // once per dev/build run, not per request — one extra refetch right
+        // after mount (built into useLikes now — see @hedgerow/react's
+        // README) closes the "reload right after someone else liked it still
+        // shows the stale snapshot" gap, replacing the demo's own
+        // RevalidateLikesOnMount workaround.
+        revalidateOnMount={Boolean(initialLikes)}
       >
-        <RevalidateLikesOnMount hadSnapshot={Boolean(initialLikes)} />
         <Likes.Avatars className="hedgerow-avatars" max={6}>
           <Likes.Avatar className="hedgerow-avatar" />
         </Likes.Avatars>
@@ -882,10 +835,12 @@ export default function CommentThread({
           maxDepth={6}
           appView={appViewOverride}
           initialData={initialThread}
-          onCommentAction={handleCommentAction}
+          revalidateOnMount={Boolean(initialThread)}
+          onLikeComment={handleLikeComment}
+          onUnlikeComment={handleUnlikeComment}
+          onReplyToComment={handleReplyToComment}
           isCommentLiked={isCommentLiked}
         >
-          <RevalidateCommentsOnMount hadSnapshot={Boolean(initialThread)} />
           <LikeStatusPrefetch likedByUri={likedByUri} setLikedByUri={setLikedByUri} />
           <PendingCommentLikeApplier setLikedByUri={setLikedByUri} />
 

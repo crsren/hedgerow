@@ -32,11 +32,11 @@ describe("Editor.Root loading / editing", () => {
     expect(getByTestId("status").textContent).toBe("Loading…");
   });
 
-  it("populates Title/Body from `document` once loaded and reports status editing", () => {
+  it("populates Title/Body from `document` once loaded and reports status idle", () => {
     const { getByTestId, container } = render(<EditorComposer />);
     expect((getByTestId("title") as HTMLInputElement).value).toBe("Original Title");
     expect((getByTestId("body") as HTMLTextAreaElement).value).toBe("Original body.");
-    expect(container.querySelector("form")!.getAttribute("data-status")).toBe("editing");
+    expect(container.querySelector("form")!.getAttribute("data-status")).toBe("idle");
   });
 
   it("resets fields when `document` changes to a new reference", () => {
@@ -72,11 +72,11 @@ describe("Editor.Title / Editor.Body", () => {
     expect(body.value).toBe("New body text.");
   });
 
-  it("Editor.Body's render prop hands back { value, onChange } for the markdown string, not DOM props", () => {
+  it("Editor.Body's slot prop hands back { value, onChange } for the markdown string, not DOM props", () => {
     const { getByTestId } = render(
       <Editor.Root document={DOC} onSave={vi.fn(async () => {})}>
         <Editor.Body
-          render={(slot) => (
+          slot={(slot) => (
             <input
               data-testid="custom-body"
               value={slot.value}
@@ -90,6 +90,38 @@ describe("Editor.Title / Editor.Body", () => {
     expect(custom.value).toBe("Original body.");
     fireEvent.change(custom, { target: { value: "Custom editor body" } });
     expect(custom.value).toBe("Custom editor body");
+  });
+
+  it("Editor.Body no longer accepts `render` (a part where render meant something different was the bug)", () => {
+    // Type-level contract, verified by tsc: EditorBodyProps has no `render`.
+    // At runtime, passing it anyway just falls through to `...rest` and gets
+    // spread onto the default <textarea> like any other unrecognized prop —
+    // it is NOT treated as the slot.
+    const { getByTestId } = render(<EditorComposer />);
+    expect((getByTestId("body") as HTMLTextAreaElement).tagName).toBe("TEXTAREA");
+  });
+});
+
+describe("Editor.Root exposes isSaved", () => {
+  it("isSaved is true only once status is saved", async () => {
+    let latestIsSaved = false;
+    function Probe() {
+      latestIsSaved = useEditorContext().isSaved;
+      return null;
+    }
+    const onSave = vi.fn(async () => {});
+    const { getByTestId } = render(
+      <Editor.Root document={DOC} onSave={onSave}>
+        <Probe />
+        <Editor.Title data-testid="title" />
+        <Editor.Save data-testid="save" />
+      </Editor.Root>,
+    );
+    expect(latestIsSaved).toBe(false);
+    fireEvent.change(getByTestId("title"), { target: { value: "Edited" } });
+    expect(latestIsSaved).toBe(false);
+    fireEvent.click(getByTestId("save"));
+    await waitFor(() => expect(latestIsSaved).toBe(true));
   });
 });
 

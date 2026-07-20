@@ -80,30 +80,58 @@ const isEventHandler = (key: string, value: unknown): value is (...args: unknown
   typeof value === "function" && /^on[A-Z]/.test(key);
 
 /**
+ * Chain two handlers for the same event so neither is silently dropped —
+ * used by every part that computes an interactive handler (`onClick`, etc.)
+ * before handing props to {@link renderElement}, so a consumer-supplied
+ * handler (via a plain prop, not just the `render` element-clone form) is
+ * chained with — never clobbered by — the part's own computed one. Matches
+ * {@link mergeProps}' own chaining order: ours runs first, then theirs.
+ */
+export function chainHandlers<Args extends unknown[]>(
+  ours: ((...args: Args) => void) | undefined,
+  theirs: ((...args: Args) => void) | undefined,
+): ((...args: Args) => void) | undefined {
+  if (!ours) return theirs;
+  if (!theirs) return ours;
+  return (...args: Args) => {
+    ours(...args);
+    theirs(...args);
+  };
+}
+
+/**
  * Merge our computed props into a consumer-supplied element's own props.
  * className concatenates, style shallow-merges, matching event handlers chain
  * (ours first, then theirs), refs compose. Everything else: theirs wins.
+ * Explicitly `undefined`-valued props in `theirs` are skipped entirely — e.g.
+ * `render={<button onClick={undefined} />}` must not clobber a computed
+ * handler (or any other computed prop) the way a real override would.
  */
 function mergeProps(ours: AnyProps, theirs: AnyProps, theirRef: React.Ref<unknown>): AnyProps {
-  const merged: AnyProps = { ...ours, ...theirs };
+  const theirsSet: AnyProps = {};
+  for (const [key, value] of Object.entries(theirs)) {
+    if (value !== undefined) theirsSet[key] = value;
+  }
+
+  const merged: AnyProps = { ...ours, ...theirsSet };
 
   const ourClass = ours.className as string | undefined;
-  const theirClass = theirs.className as string | undefined;
+  const theirClass = theirsSet.className as string | undefined;
   const className = [ourClass, theirClass].filter(Boolean).join(" ");
   if (className) merged.className = className;
 
-  if (ours.style || theirs.style) {
-    merged.style = { ...(ours.style as object), ...(theirs.style as object) };
+  if (ours.style || theirsSet.style) {
+    merged.style = { ...(ours.style as object), ...(theirsSet.style as object) };
   }
 
-  for (const key of Object.keys(theirs)) {
-    const theirHandler = theirs[key];
+  for (const key of Object.keys(theirsSet)) {
+    const theirHandler = theirsSet[key];
     const ourHandler = ours[key];
     if (isEventHandler(key, theirHandler) && isEventHandler(key, ourHandler)) {
-      merged[key] = (...args: unknown[]) => {
-        ourHandler(...args);
-        theirHandler(...args);
-      };
+      merged[key] = chainHandlers(
+        ourHandler as (...args: unknown[]) => void,
+        theirHandler as (...args: unknown[]) => void,
+      );
     }
   }
 
@@ -145,10 +173,16 @@ export function renderElement<State>(
   }
 
   if (React.isValidElement(render)) {
-    const element = render as React.ReactElement & { ref?: React.Ref<unknown> };
+    const element = render as React.ReactElement & { ref?: React.Ref<unknown>; props: AnyProps };
+    // React 19 moved `ref` onto `props` for the element (function) form;
+    // `element.ref` still exists but is no longer where a consumer's ref
+    // necessarily lives. Prefer props.ref, falling back to element.ref for
+    // React 18 (or any element created via the legacy form), so a consumer
+    // ref survives either way.
+    const theirRef = (element.props.ref as React.Ref<unknown> | undefined) ?? element.ref ?? null;
     return React.cloneElement(
       element,
-      mergeProps(own, element.props as AnyProps, element.ref ?? null) as React.Attributes,
+      mergeProps(own, element.props, theirRef) as React.Attributes,
     );
   }
 

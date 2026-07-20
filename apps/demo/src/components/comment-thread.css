@@ -148,28 +148,28 @@
 /* Optimistic reply delivery state (SLIMS-69) — see @hedgerow/react's README
    "Optimistic replies". A reply the write succeeded for is never hidden, only
    dimmed with a small status note, confirmed or not. */
-.hedgerow-item[data-state="pending"],
-.hedgerow-item[data-state="unconfirmed"] {
+.hedgerow-item[data-delivery="pending"],
+.hedgerow-item[data-delivery="unconfirmed"] {
   opacity: 0.65;
 }
-.hedgerow-item[data-state="pending"] .hedgerow-content::after,
-.hedgerow-item[data-state="unconfirmed"] .hedgerow-content::after {
+.hedgerow-item[data-delivery="pending"] .hedgerow-content::after,
+.hedgerow-item[data-delivery="unconfirmed"] .hedgerow-content::after {
   display: block;
   margin-top: 0.35rem;
   font-size: 0.78rem;
   font-style: italic;
   color: var(--muted);
 }
-.hedgerow-item[data-state="pending"] .hedgerow-content::after {
+.hedgerow-item[data-delivery="pending"] .hedgerow-content::after {
   content: "Sending…";
 }
-.hedgerow-item[data-state="unconfirmed"] .hedgerow-content::after {
+.hedgerow-item[data-delivery="unconfirmed"] .hedgerow-content::after {
   content: "Not showing for others yet — it may take a moment.";
 }
 /* Brief hand-off flash the instant a pending reply is confirmed by a real
-   fetch, before data-state disappears entirely (see DeliveryState in
+   fetch, before data-delivery disappears entirely (see DeliveryState in
    @hedgerow/react). Pure CSS, no JS beyond the attribute itself. */
-.hedgerow-item[data-state="confirmed"] {
+.hedgerow-item[data-delivery="confirmed"] {
   animation: hedgerow-confirmed-flash 1.2s ease;
 }
 @keyframes hedgerow-confirmed-flash {
@@ -523,14 +523,14 @@
 
 /* ── Reduced motion ───────────────────────────────────────────────────────── */
 /* Cheap, overdue: the entry fade-up and the "just confirmed" background flash
-   are decorative, not load-bearing (data-entering/data-state still carry the
+   are decorative, not load-bearing (data-entering/data-delivery still carry the
    real state for anyone who wants it) — a reader who's asked the OS for less
    motion gets the end state immediately instead. */
 @media (prefers-reduced-motion: reduce) {
   .hedgerow-item {
     transition: none;
   }
-  .hedgerow-item[data-state="confirmed"] {
+  .hedgerow-item[data-delivery="confirmed"] {
     animation: none;
   }
   .hedgerow-like-button,

@@ -7,6 +7,8 @@
 
 import {
   Root as CommentsRoot,
+  Provider as CommentsProvider,
+  ItemScope as CommentsItemScope,
   List,
   Item,
   Replies,
@@ -14,7 +16,7 @@ import {
   Avatar as CommentsAvatar,
   Content,
   Timestamp,
-  Likes as CommentLikes,
+  LikeCount as CommentsLikeCount,
   LikeButton as CommentsLikeButton,
   ReplyButton as CommentsReplyButton,
   Labels,
@@ -27,6 +29,7 @@ import {
 } from "./comments";
 import {
   Root as LikesRoot,
+  Provider as LikesProvider,
   Count,
   Button as LikesButton,
   Avatars,
@@ -57,18 +60,22 @@ import {
  */
 export const Comments = {
   Root: CommentsRoot,
+  /** Context-only bridge for a hand-rolled tree driven by your own `useComments()` call — see `Comments.ItemScope`. */
+  Provider: CommentsProvider,
   List,
   Item,
+  /** Mount a single node (and, via `Comments.Replies` in its children, its own subtree) outside `Comments.List`'s built-in recursion — pairs with `Comments.Provider`. */
+  ItemScope: CommentsItemScope,
   Replies,
   Author,
   Avatar: CommentsAvatar,
   Content,
   Timestamp,
-  /** The comment's own like count (not to be confused with the `Likes.*` namespace). */
-  Likes: CommentLikes,
-  /** Like/unlike toggle for this comment — see `Comments.Root`'s `onCommentAction`/`isCommentLiked`. */
+  /** The comment's own like count. */
+  LikeCount: CommentsLikeCount,
+  /** Like/unlike toggle for this comment — see `Comments.Root`'s `onLikeComment`/`onUnlikeComment`/`isCommentLiked`. */
   LikeButton: CommentsLikeButton,
-  /** "Reply to this comment" trigger — see `Comments.Root`'s `onCommentAction`. */
+  /** "Reply to this comment" trigger — see `Comments.Root`'s `onReplyToComment`. */
   ReplyButton: CommentsReplyButton,
   Labels,
   Fallback,
@@ -82,6 +89,8 @@ export const Comments = {
 /** Post-likes parts: `Root` provides state; `Count`/`Avatars` read it. */
 export const Likes = {
   Root: LikesRoot,
+  /** Context-only bridge for a hand-rolled tree driven by your own `useLikes()` call. */
+  Provider: LikesProvider,
   Count,
   /** Standalone like/unlike toggle for the post — no `Likes.Root` needed, see likes.tsx. */
   Button: LikesButton,
@@ -113,7 +122,7 @@ export const Reply = {
  * injected — no dependency on @hedgerow/publish, @hedgerow/reader, or any
  * editor library) and runs the dirty/save state machine; the rest read it.
  * `Body` is a headless SLOT (defaults to a plain `<textarea>`) — mount a real
- * rich-text editor (e.g. Tiptap, app-land only) via its `render` prop.
+ * rich-text editor (e.g. Tiptap, app-land only) via its `slot` prop.
  */
 export const Editor = {
   Root: EditorRoot,
@@ -141,7 +150,7 @@ export {
 } from "./context";
 
 // ── Render primitive (for building your own custom parts) ─────────────────────
-export { renderElement, mergeRefs, dataAttrs } from "./render";
+export { renderElement, mergeRefs, chainHandlers, dataAttrs } from "./render";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 export type {
@@ -153,7 +162,7 @@ export type {
 } from "./useComments";
 export type { UseLikesOptions, UseLikesReturn } from "./useLikes";
 export type { UseLikeButtonOptions, UseLikeButtonReturn } from "./useLikeButton";
-export type { CommentItemContextValue, CommentAction, CommentsContextValue } from "./context";
+export type { CommentsItemContextValue, CommentsContextValue } from "./context";
 export type {
   HeadlessProps,
   RenderProp,
@@ -165,32 +174,34 @@ export type {
   PartProps,
   CommentsRootState,
   CommentsRootProps,
+  CommentsProviderProps,
+  CommentsItemScopeProps,
   CommentsListState,
   CommentsListProps,
-  CommentItemState,
-  CommentItemProps,
+  CommentsItemState,
+  CommentsItemProps,
   CommentsRepliesState,
   CommentsRepliesProps,
-  AuthorState,
+  CommentsAuthorState,
   CommentsAuthorProps,
   CommentsAvatarProps,
-  ContentState,
+  CommentsContentState,
   CommentsContentProps,
-  TimestampState,
+  CommentsTimestampState,
   CommentsTimestampProps,
-  LikesState,
-  CommentsLikesProps,
+  CommentsLikeCountState,
+  CommentsLikeCountProps,
   CommentsLikeButtonState,
   CommentsLikeButtonProps,
   CommentsReplyButtonState,
   CommentsReplyButtonProps,
-  LabelsState,
+  CommentsLabelsState,
   CommentsLabelsProps,
-  FallbackState,
+  CommentsFallbackState,
   CommentsFallbackProps,
-  StatsState,
+  CommentsStatsState,
   CommentsStatsProps,
-  ReplyLinkState,
+  CommentsReplyLinkState,
   CommentsReplyLinkProps,
   CommentsLoadingProps,
   CommentsErrorState,
@@ -200,6 +211,7 @@ export type {
 export type {
   LikesRootState,
   LikesRootProps,
+  LikesProviderProps,
   LikesCountState,
   LikesCountProps,
   LikeButtonState,
