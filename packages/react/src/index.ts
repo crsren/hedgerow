@@ -1,3 +1,5 @@
+"use client";
+
 // @hedgerow/react — headless React components and hooks for Bluesky comments
 // and likes. Two composable namespaces (`Comments.*`, `Likes.*`) built as thin
 // shells over two hooks (`useComments`, `useLikes`). No styles ship: parts
