@@ -37,3 +37,8 @@ jobs:
             echo "── publint @hedgerow/$pkg"
             (cd "packages/$pkg" && npx publint)
           done
+
+      # Pack each tarball and prove it resolves: no development condition or
+      # raw src published, default conditions present, react keeps "use client".
+      - name: verify packaging
+        run: pnpm verify:packaging
