@@ -159,8 +159,10 @@ Every `data-*` attribute above — its name and, where relevant, its precedence 
 ### Styling states with CSS
 
 ```css
-/* Dim the thread while it refetches. */
-.comments[data-loading] { opacity: 0.6; }
+/* Dim the thread while it refetches in the background (a revalidate,
+   revalidateOnMount, the optimistic confirm sweep) — NOT data-loading, which
+   is now the INITIAL fetch only and would never be true again after that. */
+.comments[data-revalidating] { opacity: 0.6; }
 
 /* Deleted / blocked placeholders read differently from real comments. */
 .comment-fallback { font-style: italic; color: #888; }
