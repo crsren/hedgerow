@@ -46,7 +46,7 @@ test("signed out -> compose a targeted reply -> gate -> log in -> draft and repl
   await page.waitForSelector(".hedgerow-reply-box");
 
   // Retarget the composer at a specific comment FIRST — free, no session
-  // needed (see handleCommentAction's "reply" branch in CommentThread.tsx) —
+  // needed (see handleReplyToComment in CommentThread.tsx) —
   // so the flagship journey proves the reply TARGET survives the redirect,
   // not just the draft text.
   const targetItem = page.locator(".hedgerow-item", {

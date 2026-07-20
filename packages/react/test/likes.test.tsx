@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, waitFor, fireEvent } from "@testing-library/react";
-import { Likes } from "../src/index";
+import { Likes, useLikes } from "../src/index";
 import { loadFixture, jsonResponse, stubFetch, ROOT_URI } from "./helpers";
 
 function likesStub() {
@@ -154,5 +154,43 @@ describe("Likes.Button", () => {
     fireEvent.click(button);
     expect(button.textContent).toBe("♡ 4");
     await waitFor(() => expect(onUnlike).toHaveBeenCalledTimes(1));
+  });
+
+  it("chains a consumer-supplied onClick (via render's element-clone form) with the computed toggle instead of dropping it", async () => {
+    const order: string[] = [];
+    const onLike = vi.fn(async () => {
+      order.push("computed");
+    });
+    const { getByRole } = render(
+      <Likes.Button
+        liked={false}
+        count={4}
+        onLike={onLike}
+        onUnlike={vi.fn()}
+        render={<button onClick={() => order.push("consumer")} />}
+      />,
+    );
+    fireEvent.click(getByRole("button"));
+    await waitFor(() => expect(onLike).toHaveBeenCalled());
+    expect(order).toEqual(["computed", "consumer"]);
+  });
+});
+
+describe("Likes.Provider (SLIMS-70 custom-tree escape hatch)", () => {
+  it("mounts leaf parts against a consumer's own useLikes() call", async () => {
+    const stub = likesStub();
+    function CustomTree() {
+      const value = useLikes({ post: ROOT_URI, maxPages: 1, fetchImpl: stub.fetch });
+      if (!value.isSuccess) return null;
+      return (
+        <Likes.Provider value={value}>
+          <Likes.Count data-testid="count" />
+          <Likes.Avatars max={2} data-testid="stack" />
+        </Likes.Provider>
+      );
+    }
+    const { findByTestId, container } = render(<CustomTree />);
+    expect((await findByTestId("count")).textContent).toBe("5");
+    expect(container.querySelectorAll('[data-testid="stack"] img').length).toBe(2);
   });
 });

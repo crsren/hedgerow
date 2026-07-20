@@ -11,22 +11,27 @@ import type { UseEditorReturn } from "./useEditor";
 
 // ── Comments ─────────────────────────────────────────────────────────────────
 
-/** Discriminant for `Comments.Root`'s `onCommentAction` — see comments.tsx's `LikeButton`/`ReplyButton`. */
-export type CommentAction = "like" | "unlike" | "reply";
-
 /**
- * `useComments`'s return, plus the two purely-UI callback props `Comments.Root`
- * takes to wire per-comment like/reply triggers — kept OUT of `useComments`
- * itself (which stays a pure fetch/sort/optimistic-merge engine) since these
- * are just passed straight through from props to context for
- * `Comments.LikeButton`/`Comments.ReplyButton` to read. Both are optional and
- * `undefined` disables the parts that need them — same "injected, not
+ * `useComments`'s return, plus the three purely-UI per-verb callback props
+ * `Comments.Root` takes to wire per-comment like/unlike/reply triggers — kept
+ * OUT of `useComments` itself (which stays a pure fetch/sort/optimistic-merge
+ * engine) since these are just passed straight through from props to context
+ * for `Comments.LikeButton`/`Comments.ReplyButton` to read. Splitting the old
+ * single `onCommentAction(action, node)` into three optional, independently
+ * omittable props means `Comments.ReplyButton` (which needs only
+ * `onReplyToComment`) can render without a consumer having to also decide
+ * what "like" means, and vice versa. All three are optional and `undefined`
+ * disables/unrenders the parts that need them — same "injected, not
  * imported" contract `Reply.Root`'s `session`/`onSubmit` use, so `@hedgerow/react`
  * still never imports `@hedgerow/reader` or any other auth library.
  */
 export interface CommentsContextValue extends UseCommentsReturn {
-  /** Handle a like/unlike/reply trigger from `Comments.LikeButton`/`Comments.ReplyButton`. */
-  onCommentAction?: (action: CommentAction, node: Comment) => void | Promise<void>;
+  /** Like `node`. A rejection rolls `Comments.LikeButton`'s optimistic toggle back — same contract as `useLikeButton`'s `onLike`. */
+  onLikeComment?: (node: Comment) => void | Promise<void>;
+  /** Unlike `node`. A rejection rolls the optimistic toggle back — same contract as `useLikeButton`'s `onUnlike`. */
+  onUnlikeComment?: (node: Comment) => void | Promise<void>;
+  /** "Reply to this comment" was triggered. `Comments.ReplyButton` renders only when this is set — see its own doc comment. */
+  onReplyToComment?: (node: Comment) => void | Promise<void>;
   /** Whether the reader has already liked `node`. `undefined` = unknown (e.g. a findLike lookup still resolving). */
   isCommentLiked?: (node: Comment) => boolean | undefined;
 }
@@ -40,7 +45,7 @@ export function useCommentsContext(): CommentsContextValue {
 }
 
 /** Per-node state shared down a single comment row (and its recursion). */
-export interface CommentItemContextValue {
+export interface CommentsItemContextValue {
   node: CommentNode;
   /** 0 for top-level comments, +1 per nesting level. */
   depth: number;
@@ -53,16 +58,16 @@ export interface CommentItemContextValue {
   template: ReactNode;
 }
 
-export const CommentItemContext = createContext<CommentItemContextValue | null>(null);
+export const CommentItemContext = createContext<CommentsItemContextValue | null>(null);
 
-export function useCommentItemContext(): CommentItemContextValue {
+export function useCommentItemContext(): CommentsItemContextValue {
   const ctx = useContext(CommentItemContext);
   if (!ctx) throw new Error("This part must be rendered inside <Comments.Item>.");
   return ctx;
 }
 
 /** Non-throwing accessor — for parts (e.g. ReplyLink) usable in or out of an item. */
-export function useOptionalCommentItem(): CommentItemContextValue | null {
+export function useOptionalCommentItem(): CommentsItemContextValue | null {
   return useContext(CommentItemContext);
 }
 

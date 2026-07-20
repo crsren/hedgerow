@@ -6,7 +6,7 @@
 import * as React from "react";
 import { describe, it, expect } from "vitest";
 import { render } from "@testing-library/react";
-import { renderElement, mergeRefs, dataAttrs, type RenderElementParams } from "../src/render";
+import { renderElement, mergeRefs, chainHandlers, dataAttrs, type RenderElementParams } from "../src/render";
 
 /** Thin component wrapper so we can render a renderElement() result into the DOM. */
 function Probe({
@@ -147,5 +147,88 @@ describe("renderElement — element (clone) form", () => {
     );
     container.querySelector("button")!.click();
     expect(clicked).toBe(true);
+  });
+
+  it("skips an explicitly-undefined prop on the render element so it can't clobber a computed one", () => {
+    // render={<button onClick={undefined} />} must not silently disable a
+    // part's own computed handler — undefined here reads as "the consumer
+    // didn't set anything", not "explicitly clear it".
+    let called = false;
+    const { container } = render(
+      <Probe
+        tag="button"
+        params={{
+          state: {},
+          props: {
+            onClick: () => {
+              called = true;
+            },
+            children: "x",
+          },
+          render: <button onClick={undefined} />,
+        }}
+      />,
+    );
+    container.querySelector("button")!.click();
+    expect(called).toBe(true);
+  });
+
+  it("prefers the element's props.ref (React 19 ref-as-prop form) over its legacy element.ref when both are present", () => {
+    // React 18's own createElement/JSX always extracts a literal `ref={...}`
+    // into `element.ref`, never leaving it in `.props` — so the only way to
+    // exercise the React-19 shape under this repo's React 18 test peer is to
+    // construct the element object directly rather than through JSX/
+    // createElement. Copies the real $$typeof/type machinery off an actual
+    // element so React.cloneElement still accepts it as valid.
+    const propsRef = { current: null as HTMLButtonElement | null };
+    const legacyRef = { current: null as HTMLButtonElement | null };
+    const real = React.createElement("button", { type: "button" }) as React.ReactElement & {
+      ref?: React.Ref<unknown>;
+      props: Record<string, unknown>;
+    };
+    const fakeElement = {
+      ...real,
+      ref: legacyRef,
+      props: { ...real.props, ref: propsRef },
+    } as unknown as React.ReactElement;
+
+    render(
+      <Probe
+        tag="button"
+        params={{ state: {}, props: { children: "x" }, render: fakeElement }}
+      />,
+    );
+
+    expect(propsRef.current).not.toBeNull();
+    expect(legacyRef.current).toBeNull();
+  });
+});
+
+describe("chainHandlers", () => {
+  it("returns the other side untouched when one side is missing", () => {
+    const a = () => {};
+    expect(chainHandlers(a, undefined)).toBe(a);
+    expect(chainHandlers(undefined, a)).toBe(a);
+    expect(chainHandlers(undefined, undefined)).toBeUndefined();
+  });
+
+  it("calls both, ours first, when both are present", () => {
+    const order: string[] = [];
+    const combined = chainHandlers(
+      () => order.push("ours"),
+      () => order.push("theirs"),
+    );
+    combined?.();
+    expect(order).toEqual(["ours", "theirs"]);
+  });
+
+  it("forwards arguments to both handlers", () => {
+    const seen: unknown[][] = [];
+    const combined = chainHandlers<[string, number]>(
+      (...args) => seen.push(args),
+      (...args) => seen.push(args),
+    );
+    combined?.("x", 1);
+    expect(seen).toEqual([["x", 1], ["x", 1]]);
   });
 });

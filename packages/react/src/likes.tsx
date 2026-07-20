@@ -3,7 +3,7 @@
 // state to `render`, `data-*` reflection, zero styles.
 import * as React from "react";
 import type { Like } from "@hedgerow/comments";
-import { renderElement, dataAttrs } from "./render";
+import { renderElement, dataAttrs, chainHandlers } from "./render";
 import type { HeadlessProps } from "./render";
 import { LikesRootContext, LikeItemContext, useLikesContext, useLikeItemContext } from "./context";
 import { useLikes, type UseLikesOptions, type UseLikesReturn } from "./useLikes";
@@ -26,18 +26,37 @@ export interface LikesRootProps
     Omit<React.ComponentPropsWithoutRef<"div">, "className" | "style" | "children"> {}
 
 /** Provider + container for a post's likes. Renders a `<div>` by default. */
-export const Root = React.forwardRef<HTMLDivElement, LikesRootProps>(function LikesRoot(
-  { post, pageSize, maxPages, initialData, appView, fetchImpl, cacheTtlMs, render, className, style, children, ...rest },
-  ref,
-) {
+export const Root = React.forwardRef<HTMLDivElement, LikesRootProps>(function LikesRoot(props, ref) {
+  const {
+    post,
+    pageSize,
+    maxPages,
+    initialData,
+    data,
+    onRefetch,
+    appView,
+    fetchImpl,
+    cacheTtlMs,
+    revalidateOnMount,
+    render,
+    className,
+    style,
+    children,
+    ...rest
+  } = props;
+
   const value = useLikes({
     post,
     ...(pageSize !== undefined ? { pageSize } : {}),
     ...(maxPages !== undefined ? { maxPages } : {}),
     ...(initialData !== undefined ? { initialData } : {}),
+    // Presence, not value — see useLikes' own `controlled` check.
+    ...("data" in props ? { data } : {}),
+    ...(onRefetch !== undefined ? { onRefetch } : {}),
     ...(appView !== undefined ? { appView } : {}),
     ...(fetchImpl !== undefined ? { fetchImpl } : {}),
     ...(cacheTtlMs !== undefined ? { cacheTtlMs } : {}),
+    ...(revalidateOnMount !== undefined ? { revalidateOnMount } : {}),
   });
 
   const state: LikesRootState = { status: value.status, total: value.total, isEmpty: value.isEmpty };
@@ -55,6 +74,7 @@ export const Root = React.forwardRef<HTMLDivElement, LikesRootProps>(function Li
       ...dataAttrs({
         status: value.status,
         loading: value.isLoading,
+        revalidating: value.isRevalidating,
         error: value.isError,
         empty: value.isEmpty,
         total: value.total,
@@ -63,8 +83,21 @@ export const Root = React.forwardRef<HTMLDivElement, LikesRootProps>(function Li
     },
   });
 
-  return <LikesRootContext.Provider value={value}>{element}</LikesRootContext.Provider>;
+  return <Provider value={value}>{element}</Provider>;
 });
+
+// ── Provider (context bridge for a hand-rolled tree, SLIMS-70) ─────────────────
+
+export interface LikesProviderProps {
+  /** The return of your OWN `useLikes()` call — lets you mount `Likes.*` leaf parts (`Count`, `Avatars`, …) without `Likes.Root` owning the fetch/state machine itself. */
+  value: UseLikesReturn;
+  children?: React.ReactNode;
+}
+
+/** The context half of `Likes.Root`, without the fetch/render half — same idea as `Comments.Provider`. */
+export function Provider({ value, children }: LikesProviderProps): React.ReactElement {
+  return <LikesRootContext.Provider value={value}>{children}</LikesRootContext.Provider>;
+}
 
 // ── Count ────────────────────────────────────────────────────────────────────
 
@@ -137,7 +170,7 @@ export const Button = React.forwardRef<HTMLButtonElement, LikeButtonProps>(funct
       ...rest,
       disabled: value.isDisabled,
       "aria-pressed": value.liked === true,
-      onClick: () => void value.toggle(),
+      onClick: chainHandlers(() => void value.toggle(), (rest as { onClick?: () => void }).onClick),
       ...dataAttrs({ liked: value.liked === true, busy: value.isBusy, disabled: value.isDisabled }),
       children: children ?? (value.liked ? `♥ ${value.count}` : `♡ ${value.count}`),
     },
@@ -216,8 +249,8 @@ export const Avatar = React.forwardRef<HTMLImageElement, LikeAvatarProps>(functi
       src: like.actor.avatar,
       alt: like.actor.displayName || like.actor.handle,
       loading: "lazy",
-      ...dataAttrs({ handle: like.actor.handle }),
       ...rest,
+      ...dataAttrs({ handle: like.actor.handle }),
     },
   });
 });

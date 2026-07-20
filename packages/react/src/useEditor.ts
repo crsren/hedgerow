@@ -19,19 +19,19 @@ export interface EditorFields {
 }
 
 /**
- * Where the editor currently sits. "editing" is the loaded-but-unedited/clean
- * state (documented elsewhere as "idle") — kept as "editing" here to name the
- * state machine's actual transition: loading → editing → dirty → saving →
- * saved/error.
+ * Where the editor currently sits: loading → idle → dirty → saving →
+ * saved/error. "idle" is the loaded-but-unedited/clean state — a freshly
+ * loaded document, or one just saved and then left untouched (a *new* save
+ * afterwards goes dirty → saving → saved again, same as the first edit).
  */
-export type EditorStatus = "loading" | "editing" | "dirty" | "saving" | "saved" | "error";
+export type EditorStatus = "loading" | "idle" | "dirty" | "saving" | "saved" | "error";
 
 export interface UseEditorOptions {
   /**
    * The document to edit, or `null` while it's still loading (before the
    * consumer has fetched/resolved which record to edit). A NEW object
    * reference (e.g. the consumer switched to editing a different post) resets
-   * the fields and the status back to "editing" — re-renders with the SAME
+   * the fields and the status back to "idle" — re-renders with the SAME
    * reference never clobber in-progress, unsaved edits.
    */
   document: EditorFields | null;
@@ -44,6 +44,7 @@ export interface UseEditorReturn {
   isLoading: boolean;
   isDirty: boolean;
   isSaving: boolean;
+  isSaved: boolean;
   isError: boolean;
   error: unknown;
   title: string;
@@ -74,7 +75,7 @@ export function useEditor(options: UseEditorOptions): UseEditorReturn {
     if (document) {
       setTitleState(document.title);
       setMarkdownState(document.markdown);
-      setStatus("editing");
+      setStatus("idle");
     } else {
       setStatus("loading");
     }
@@ -108,6 +109,7 @@ export function useEditor(options: UseEditorOptions): UseEditorReturn {
     isLoading: status === "loading",
     isDirty: status === "dirty",
     isSaving: status === "saving",
+    isSaved: status === "saved",
     isError: status === "error",
     error,
     title,

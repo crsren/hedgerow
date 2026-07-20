@@ -133,15 +133,15 @@ test("logged-in reader can post a reply that appears in the thread", async ({ pa
   // indexing lag to see it show up at all.
   const item = page.locator(".hedgerow-item", { hasText: replyText });
   await expect(item).toBeVisible({ timeout: 5_000 });
-  await expect(item).toHaveAttribute("data-state", "pending");
+  await expect(item).toHaveAttribute("data-delivery", "pending");
   await expect(page.getByPlaceholder("Write a reply…")).toHaveValue("");
 
   // The write is real (com.atproto.repo.createRecord on carol's own repo) —
   // once the shim's own getPostThread has indexed it (the UI's own
   // confirm-sweep retry loop, up to 3 refetches a few seconds apart), the
   // pending marker clears and it's an ordinary comment.
-  await expect(item).not.toHaveAttribute("data-state", "pending", { timeout: 20_000 });
-  await expect(item).not.toHaveAttribute("data-state", "unconfirmed");
+  await expect(item).not.toHaveAttribute("data-delivery", "pending", { timeout: 20_000 });
+  await expect(item).not.toHaveAttribute("data-delivery", "unconfirmed");
 });
 
 test("reader can like the post: count increments, survives reload, unlike decrements", async ({ page }) => {
@@ -196,7 +196,7 @@ test("reader can reply to a specific comment, and it nests under it", async ({ p
 
   // Target bob's first seeded reply specifically (dev-net.mjs seeds two, this
   // is the top-level one) — not the root post. Retargeting itself needs no
-  // session (interaction-first — see handleCommentAction's "reply" branch in
+  // session (interaction-first — see handleReplyToComment in
   // CommentThread.tsx), so this is exercised identically whether or not the
   // reader happens to already be signed in.
   const targetItem = page.locator(".hedgerow-item", {
