@@ -33,7 +33,7 @@ jobs:
       # before they ship. Runs after build so dist/ exists to inspect.
       - name: publint all publishable packages
         run: |
-          for pkg in publish comments react; do
+          for pkg in publish comments react reader; do
             echo "── publint @hedgerow/$pkg"
             (cd "packages/$pkg" && npx publint)
           done
