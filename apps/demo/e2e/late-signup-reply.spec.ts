@@ -11,7 +11,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { AtpAgent } from "@atproto/api";
 import { expect, test } from "@playwright/test";
-import { logIn, scrollToComments } from "./helpers";
+import { scrollToComments, signInViaAuthGate } from "./helpers";
 
 interface LocalNet {
   seeded: { slug: string; title: string; anchor: { uri: string; cid: string } } | null;
@@ -42,7 +42,7 @@ test("a reader who signs up AFTER the network booted still shows up when they re
   await page.goto(`/${slug}`);
   await scrollToComments(page);
   await page.waitForSelector(".hedgerow-reply-box");
-  await logIn(page, handle, password, slug);
+  await signInViaAuthGate(page, handle, password, slug);
 
   const replyText = `Late-signup reply from ${handle} — ${Date.now()}`;
   await page.getByPlaceholder("Write a reply…").fill(replyText);

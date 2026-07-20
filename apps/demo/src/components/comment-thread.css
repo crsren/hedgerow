@@ -294,6 +294,11 @@
   gap: 0.75rem;
 }
 
+/* .hedgerow-reply-login/-handle/-login-button: no longer used by
+   CommentThread.tsx itself (its inline signed-out login form moved into
+   AuthGateDialog's own `.hedgerow-auth-dialog-*` classes below) — but
+   EditorIsland.tsx's /edit sign-in form still reuses these three, so they
+   stay here rather than duplicating them into edit.css. */
 .hedgerow-reply-login {
   display: flex;
   gap: 0.5rem;
@@ -331,33 +336,6 @@
 .hedgerow-reply-submit[data-disabled] {
   opacity: 0.5;
   cursor: default;
-}
-
-.hedgerow-reply-signup {
-  margin: 0;
-  font-size: 0.82rem;
-  color: var(--muted);
-}
-.hedgerow-reply-signup-button {
-  font: inherit;
-  font-size: 0.82rem;
-  font-weight: 600;
-  color: var(--accent);
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-  text-decoration: underline;
-}
-.hedgerow-reply-signup-button:disabled {
-  opacity: 0.6;
-  cursor: default;
-}
-
-.hedgerow-reply-signedin {
-  display: flex;
-  flex-direction: column;
-  gap: 0.6rem;
 }
 
 .hedgerow-reply-identity {
@@ -426,4 +404,137 @@
   margin: 0;
   font-size: 0.85rem;
   color: var(--accent);
+}
+
+/* ── Auth-gate dialog ("Join the conversation") ──────────────────────────── */
+/* Interaction-first, auth-on-demand (see CommentThread.tsx's AuthGateDialog):
+   opened by a signed-out submit/like. A native <dialog> — showModal() gives
+   focus-trapping, Esc-to-close, and focus-return on close all for free, so
+   there's nothing to style there beyond the box itself + its backdrop. */
+
+.hedgerow-auth-dialog {
+  width: min(24rem, calc(100vw - 2.5rem));
+  padding: 1.5rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.6rem;
+  box-shadow: 0 1.5rem 3rem rgba(0, 0, 0, 0.25);
+}
+.hedgerow-auth-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.hedgerow-auth-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.hedgerow-auth-dialog-title {
+  margin: 0;
+  font-size: 1.1rem;
+}
+
+.hedgerow-auth-dialog-honesty {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+
+.hedgerow-auth-dialog-login {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.hedgerow-auth-dialog-handle {
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: 0.5rem 0.7rem;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+.hedgerow-auth-dialog-handle:disabled {
+  opacity: 0.6;
+}
+
+.hedgerow-auth-dialog-login-button {
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--accent);
+  border: none;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.hedgerow-auth-dialog-login-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.hedgerow-auth-dialog-signup {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.hedgerow-auth-dialog-signup-button {
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.hedgerow-auth-dialog-signup-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hedgerow-auth-dialog-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--accent);
+}
+
+.hedgerow-auth-dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+.hedgerow-auth-dialog-cancel {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* ── Reduced motion ───────────────────────────────────────────────────────── */
+/* Cheap, overdue: the entry fade-up and the "just confirmed" background flash
+   are decorative, not load-bearing (data-entering/data-state still carry the
+   real state for anyone who wants it) — a reader who's asked the OS for less
+   motion gets the end state immediately instead. */
+@media (prefers-reduced-motion: reduce) {
+  .hedgerow-item {
+    transition: none;
+  }
+  .hedgerow-item[data-state="confirmed"] {
+    animation: none;
+  }
+  .hedgerow-like-button,
+  .hedgerow-item-like {
+    transition: none;
+  }
 }

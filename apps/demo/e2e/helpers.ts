@@ -7,11 +7,19 @@
 //  - logInWithBluesky(): the shared steps up to (and including) consent.
 //    Asserts nothing post-redirect — every page that mounts this login form
 //    shows something different once signed in (the reply composer vs. the
-//    /edit document list), so callers assert that part themselves.
-//    Used directly by edit.spec.ts.
+//    /edit document list), so callers assert that part themselves. Used
+//    directly by edit.spec.ts (whose /edit sign-in form is unaffected by the
+//    auth-on-demand redesign — it's still visible up front, not gated behind
+//    a modal) — AND by the reader specs below, where the SAME placeholder/
+//    button text now lives inside AuthGateDialog's `.hedgerow-auth-dialog`
+//    modal instead of an always-visible inline form. Playwright's locators
+//    auto-wait, so this works unmodified either way as long as the modal has
+//    already been opened (a gated submit/like) before calling it.
 //  - logIn(): logInWithBluesky() + waits for the post-page redirect and the
 //    reply box's signed-in state. Used by the reader specs
-//    (oauth-reply.spec.ts, late-signup-reply.spec.ts).
+//    (oauth-reply.spec.ts, late-signup-reply.spec.ts) for a flow that's
+//    ALREADY triggered the auth gate itself (a real submit/like) and wants
+//    the shared post-redirect assertion too.
 import { expect, type Page } from "@playwright/test";
 
 /**
@@ -64,4 +72,40 @@ export async function scrollToComments(page: Page, selector = "section.hedgerow"
   await expect(async () => {
     await page.locator(selector).scrollIntoViewIfNeeded();
   }).toPass({ timeout: 10_000 });
+}
+
+/**
+ * Get a signed-in session on the post page via the auth-gate modal, for specs
+ * that need to already be logged in to test something DOWNSTREAM of that (an
+ * ordinary reply post, a like toggle, nested replies) rather than the gate/
+ * redirect round trip itself — auth-gate.spec.ts is where that round trip is
+ * exercised in depth.
+ *
+ * Deliberately triggers the gate via a REPLY submit, not a Like click: a
+ * pending "like" intent auto-applies the moment the reader lands back signed
+ * in (point 3 of the redesign), which would leave the post already liked
+ * before a like/unlike test even starts. A reply intent is never
+ * auto-posted, so this leaves post/comment state untouched — only the
+ * composer ends up with a leftover draft (the trigger text), which is
+ * cleared before returning so callers get a clean field.
+ */
+export async function signInViaAuthGate(
+  page: Page,
+  handle: string,
+  password: string,
+  slugPattern: string,
+): Promise<void> {
+  const field = page.getByPlaceholder("Write a reply…");
+  await field.fill("(signing in)");
+  await page
+    .locator(".hedgerow-reply-box")
+    .getByRole("button", { name: /^reply$/i })
+    .click();
+  await expect(page.locator(".hedgerow-auth-dialog")).toBeVisible();
+
+  await logIn(page, handle, password, slugPattern);
+
+  // The gate's own draft (the trigger text above) was restored into the
+  // field per point 3 — clear it so the caller starts from an empty composer.
+  await field.fill("");
 }

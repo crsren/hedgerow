@@ -142,6 +142,38 @@ describe("Reply submit flow", () => {
     expect(field.value).toBe("hi"); // text preserved on failure
     expect(onSubmitted).not.toHaveBeenCalled();
   });
+
+  it("keeps the text and returns to idle (no error, no onSubmitted) when onSubmit resolves false", async () => {
+    // The "intercepted, not posted" contract — e.g. an auth-on-demand gate
+    // that opens its own UI instead of writing anything. Distinct from a
+    // rejection: nothing failed, so no Reply.Error either.
+    const onSubmit = vi.fn(async () => false as const);
+    const onSubmitted = vi.fn();
+    const { getByTestId, queryByTestId, container } = render(
+      <Composer onSubmit={onSubmit} onSubmitted={onSubmitted} />,
+    );
+    const field = getByTestId("field") as HTMLTextAreaElement;
+    fireEvent.change(field, { target: { value: "hi" } });
+    fireEvent.click(getByTestId("submit"));
+
+    await waitFor(() => expect(onSubmit).toHaveBeenCalledWith("hi"));
+    await waitFor(() => expect(container.querySelector("form")!.getAttribute("data-status")).toBe("idle"));
+    expect(field.value).toBe("hi"); // draft preserved, never cleared
+    expect(queryByTestId("error")).toBeNull();
+    expect(onSubmitted).not.toHaveBeenCalled();
+  });
+
+  it("still submits normally (clears the field) when onSubmit resolves undefined", async () => {
+    // false is the special case; anything else (including plain `undefined`,
+    // the common `Promise<void>` return) is the ordinary "it posted" path.
+    const onSubmit = vi.fn(async () => undefined);
+    const { getByTestId } = render(<Composer onSubmit={onSubmit} />);
+    const field = getByTestId("field") as HTMLTextAreaElement;
+    fireEvent.change(field, { target: { value: "hi" } });
+    fireEvent.click(getByTestId("submit"));
+
+    await waitFor(() => expect(field.value).toBe(""));
+  });
 });
 
 describe("Reply.Root data-attributes", () => {

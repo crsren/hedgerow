@@ -225,7 +225,7 @@ Every part accepts the shared headless props — `className` (string or `(state)
 
 | Part | Default element | State | Notes |
 |------|-----------------|-------|-------|
-| `Reply.Root` | `form` | `{ status, isSignedIn, isSubmitting, isError }` | Provider + container. Takes `session` (`{ did, handle, displayName? } \| null`) and `onSubmit(text) => Promise<void>` as props, plus `onSubmitted?: () => void` and `defaultValue?: string`. Renders a `<form>` so both `Reply.Submit` and pressing Enter in `Reply.Field` submit; the native submit is intercepted. |
+| `Reply.Root` | `form` | `{ status, isSignedIn, isSubmitting, isError }` | Provider + container. Takes `session` (`{ did, handle, displayName? } \| null`) and `onSubmit(text) => Promise<void \| false>` as props, plus `onSubmitted?: () => void` and `defaultValue?: string`. Renders a `<form>` so both `Reply.Submit` and pressing Enter in `Reply.Field` submit; the native submit is intercepted. Resolving `onSubmit` to `false` means "intercepted, not posted" — see [Auth on demand](#auth-on-demand) below. |
 | `Reply.Field` | `textarea` | `{ value, isSubmitting, isSignedIn }` | The reply text, bound to `Reply.Root`'s own state — `value`/`onChange` aren't exposed as props (see the escape hatch below). |
 | `Reply.Submit` | `button` (`type="submit"`) | `{ isSubmitting, isDisabled, isSignedIn }` | Disabled while submitting or the field is empty/whitespace. Defaults to "Reply" / "Posting…" text. |
 | `Reply.SignedIn` | `div` | `{}` | Renders only when `session` is non-null. |
@@ -405,6 +405,46 @@ The node then moves through `Comments.Item`'s `data-state`, exposed as `state.de
 
 v1 ships entering-only transitions (no exit animation — a confirmed node just keeps existing, so there's nothing to animate out of the DOM).
 
+### Auth on demand
+
+Every part in this library is happy to render fully **enabled** for a signed-out reader — nothing here gates on a session by hiding UI. That's deliberate: "interaction-first, auth-on-demand" (compose a reply, tap Like, decide auth is worth it only once you've committed to the action) is a first-class pattern, not a workaround. Four seams make it possible:
+
+1. **Pass the write handlers unconditionally.** Don't do `onCommentAction={session ? handleAction : undefined}` — that's what makes `Comments.ReplyButton` render nothing and `Comments.LikeButton` hard-disable (see the state table above: both key off whether the prop is *set*, not whether a session exists). Pass `onCommentAction`/`isCommentLiked` (and `Reply.Root`'s `session`/`onSubmit`, `Likes.Button`'s `onLike`/`onUnlike`) every time; check `session` **inside** the handler instead.
+2. **`isCommentLiked` must return `false`, not `undefined`, for "signed out."** `undefined` means "unknown — resolving," which `Comments.LikeButton`/`Likes.Button` correctly treat as not-yet-safe-to-toggle (`isDisabled` when `liked === undefined`, per `useLikeButton`). A signed-out reader isn't in an unresolved state, though — they're definitely not shown as having liked anything — so report `false`. That keeps the toggle live: a click still fires `onLike`, which is exactly where you open your auth gate.
+3. **Gate a like from inside `onLike`/`onUnlike` by rejecting.** `useLikeButton`'s optimistic overlay only rolls back on a rejection (see its own doc comment — "Not rethrown," by design, since it's the consumer's own callback that failed, not the button). So: open your auth modal (stash whatever context you need), then `throw`/reject. The optimistic flip-and-roll-back is a single React-batched update, so nothing visibly flashes "liked" before it reverts.
+4. **Gate a reply submit by resolving `onSubmit` to `false`.** This is what `false` (over throwing, which flips `status` to `"error"` and shows `Reply.Error`) is *for*: "intercepted, not posted" isn't a failure. The field's text survives either way — write your own intent-stash (session, sessionStorage, wherever) inside `onSubmit`, return `false`, and the composer just sits there with the draft intact until the reader actually has a session, at which point a real `onSubmit` call posts it.
+
+```tsx
+<Comments.Root
+  post={post}
+  onCommentAction={(action, node) => {
+    if (action === "reply") return setReplyTarget(node); // free — no session needed to aim the composer
+    if (!session) return openAuthGate({ action, node }).then(() => { throw new Error("gated"); });
+    return action === "like"
+      ? reader.like(node).then(() => {})
+      : reader.unlike(likedByUri[node.uri]!);
+  }}
+  isCommentLiked={(node) => (session ? likedByUri[node.uri] != null : false)}
+>
+  {/* … */}
+</Comments.Root>
+
+<Reply.Root
+  session={session}
+  onSubmit={(text) => {
+    if (!session) return openAuthGate({ text }).then(() => false as const);
+    return reader.createReply({ root, parent, text }).then(() => {});
+  }}
+>
+  {/* Field/Submit render unconditionally — no Reply.SignedOut wrapper */}
+  <Reply.Field />
+  <Reply.Submit />
+  <Reply.Error />
+</Reply.Root>
+```
+
+Surviving an OAuth **redirect** (the reader leaves the page entirely to authorize, then comes back) is one layer up from any of this — it's `sessionStorage` plus whatever your auth provider's session-restore call does on return, both consumer-side, no library involvement. See the demo's `CommentThread.tsx` for the full reference: it stashes `{ draft, replyTarget, pendingAction }` keyed by post right before redirecting, and rehydrates (restoring the draft/target, auto-performing a pending like, focusing the field for a pending reply without auto-posting it) once `reader.restore()` resolves after the redirect back.
+
 ## Hooks
 
 The components are a thin shell over three hooks. Use them directly when you want your own markup entirely.
@@ -475,7 +515,7 @@ function useReply(options: UseReplyOptions): UseReplyReturn;
 
 interface UseReplyOptions {
   session: { did: string; handle: string; displayName?: string } | null;
-  onSubmit: (text: string) => Promise<void>;
+  onSubmit: (text: string) => Promise<void | false>; // resolve `false` to keep the draft without posting — see "Auth on demand"
   onSubmitted?: () => void;               // called once the field is cleared after a successful submit
   defaultValue?: string;                  // initial field text (uncontrolled)
 }

@@ -20,8 +20,21 @@ export interface ReplySession {
 export interface UseReplyOptions {
   /** The signed-in reader, or `null` when signed out. Drives `Reply.SignedIn` / `Reply.SignedOut`. */
   session: ReplySession | null;
-  /** Write the reply. A rejection sets `status` to `"error"` and keeps the field's text. */
-  onSubmit: (text: string) => Promise<void>;
+  /**
+   * Write the reply. A rejection sets `status` to `"error"` and keeps the
+   * field's text so the reader can retry. Resolving normally (or to
+   * `undefined`) clears the field, returns to `"idle"`, and fires
+   * `onSubmitted` — the ordinary "it posted" path.
+   *
+   * Resolve to `false` instead when the submit was **intercepted** rather
+   * than posted — e.g. an auth-on-demand gate that needs a session before it
+   * can write anything, triggered from inside `onSubmit` itself. Like a
+   * rejection, this keeps the field's text (never cleared); unlike a
+   * rejection, `status` returns to `"idle"` rather than `"error"` (nothing
+   * failed — the consumer is handling it, typically by opening its own UI)
+   * and `onSubmitted` is not called (nothing was actually submitted).
+   */
+  onSubmit: (text: string) => Promise<void | false>;
   /** Called once, after a successful submit has cleared the field. */
   onSubmitted?: () => void;
   /** Initial field text (uncontrolled). Default `""`. */
@@ -54,7 +67,14 @@ export function useReply(options: UseReplyOptions): UseReplyReturn {
     setStatus("submitting");
     setError(undefined);
     try {
-      await onSubmit(text);
+      const result = await onSubmit(text);
+      if (result === false) {
+        // Intercepted, not posted — see UseReplyOptions.onSubmit. The field's
+        // text is deliberately left alone (not cleared) and this isn't an
+        // error, so no Reply.Error either.
+        setStatus("idle");
+        return;
+      }
       setValue("");
       setStatus("idle");
       onSubmitted?.();
