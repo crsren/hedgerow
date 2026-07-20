@@ -10,6 +10,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
+import { scrollToComments } from "./helpers";
 
 interface LocalNet {
   seeded: { slug: string; title: string; anchor: { uri: string; cid: string } } | null;
@@ -56,13 +57,44 @@ test("post page renders from a PDS document record and the comment thread loads 
 
   // The comments island hydrates on scroll-into-view (client:visible).
   const comments = page.locator("section.hedgerow");
-  await comments.scrollIntoViewIfNeeded();
+  await scrollToComments(page);
 
   await expect(page.locator(".hedgerow-item").first()).toBeVisible();
-  await expect(page.getByText("Nice piece — this is exactly why I moved")).toBeVisible();
-  await expect(page.getByText("The record-vs-page framing finally clicked")).toBeVisible();
+  // Scoped to the comments section itself, not a bare page-wide getByText —
+  // Astro's dev toolbar (Menu/Inspect/Audit/Settings, always present in dev
+  // mode) injects its own DOM elsewhere on the page that can otherwise
+  // collide with a loose text match.
+  await expect(comments.getByText("Nice piece — this is exactly why I moved")).toBeVisible();
+  await expect(comments.getByText("The record-vs-page framing finally clicked")).toBeVisible();
 
   // The like count is the root post's true likeCount (not a page-capped
   // getLikes count) — see LikeCount in CommentThread.tsx.
   await expect(page.locator(".hedgerow-likecount")).toHaveText("1 like");
+});
+
+test("the post page's raw HTML already contains the seeded reply — before any hydration (SLIMS-69 SSR snapshot)", async ({
+  request,
+}) => {
+  // Deliberately `request.get`, not `page.goto` — a real browser always runs
+  // JS, so it can't prove anything was server-rendered. Fetching the raw
+  // response bytes and grepping them is the only way to prove the comment
+  // thread is IN the HTML the server sent, not something the client-hydrated
+  // island fetched afterwards. See apps/demo/src/pages/[...slug].astro's
+  // getStaticPaths, which calls @hedgerow/comments' fetchThread/fetchLikes
+  // server-side and passes the result as Comments.Root/Likes.Root's
+  // `initialData` — additive, SSR-only, no behavior change for a page with
+  // no bskyPostUri.
+  test.skip(!localNet.seeded, "dev-net seeded no document to test against");
+  const { slug } = localNet.seeded!;
+
+  const response = await request.get(`/${slug}`);
+  expect(response.ok()).toBe(true);
+  const html = await response.text();
+
+  expect(html).toContain("Nice piece — this is exactly why I moved");
+  expect(html).toContain("The record-vs-page framing finally clicked");
+  // Not just present anywhere — inside the actual comment markup, proving
+  // it's Comments.Root's initialData-seeded render and not, say, an
+  // accidental match in inline JSON.
+  expect(html).toMatch(/hedgerow-item[\s\S]*Nice piece/);
 });

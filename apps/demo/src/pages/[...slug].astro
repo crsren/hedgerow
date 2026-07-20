@@ -4,6 +4,7 @@ import Base from "../layouts/Base.astro";
 import { loadSite, slugOf } from "../lib/site";
 import CommentThread from "../components/CommentThread";
 import type { DocumentRecord } from "@hedgerow/publish";
+import { fetchLikes, fetchThread, type LikesResult, type ThreadResult } from "@hedgerow/comments";
 
 // html: false (the default) is the sanitization here: raw HTML in the
 // markdown source is escaped as text rather than passed through, so an
@@ -12,20 +13,64 @@ import type { DocumentRecord } from "@hedgerow/publish";
 // PDS record), but there's no reason to trust it more than that.
 const md = new MarkdownIt({ linkify: true });
 
+// SSR thread snapshot (SLIMS-69): fetch the comment thread + likes on the
+// server (this package is Node-safe — no DOM/browser assumptions) so the
+// first HTML response already has the comments in it, closing the
+// comments-loading-gap the client-hydrated island otherwise leaves. This is
+// polish, not a hard dependency: a failure here just means the page falls
+// back to exactly the old behavior (the island fetches client-side on
+// mount) — see the try/catch below. Inlined into getStaticPaths (rather than
+// a separate top-level helper) because Astro's static-build bundler tree-shook
+// a standalone async function here out of the getStaticPaths chunk even
+// though it was called — a real, reproduced build failure
+// ("fetchInitialComments is not defined" at build time despite a clean
+// `astro check`/`tsc --noEmit`), not a hypothetical.
 export async function getStaticPaths() {
   const { documents } = await loadSite();
-  return documents.map(({ uri, value, bskyPostUri }) => ({
-    params: { slug: slugOf(value) },
-    props: { doc: value, recordUri: uri, bskyPostUri: bskyPostUri ?? null },
-  }));
+  // Same override HEDGEROW_APPVIEW_URL loadSite() itself doesn't need (it
+  // reads records straight from the PDS/PLC), but the comments read core
+  // always goes through an AppView — see docs/local-testing.md.
+  const appView = process.env.HEDGEROW_APPVIEW_URL;
+  const appViewOpts = appView ? { appView } : {};
+
+  return Promise.all(
+    documents.map(async ({ uri, value, bskyPostUri }) => {
+      let initialThread: ThreadResult | undefined;
+      let initialLikes: LikesResult | undefined;
+      if (bskyPostUri) {
+        try {
+          [initialThread, initialLikes] = await Promise.all([
+            fetchThread(bskyPostUri, { maxDepth: 6, ...appViewOpts }),
+            fetchLikes(bskyPostUri, appViewOpts),
+          ]);
+        } catch {
+          // AppView hiccup, post not yet indexed, etc. — the island's own
+          // client-side fetch (unconditionally still wired below) is the
+          // fallback, exactly the pre-SSR-snapshot behavior.
+        }
+      }
+      return {
+        params: { slug: slugOf(value) },
+        props: {
+          doc: value,
+          recordUri: uri,
+          bskyPostUri: bskyPostUri ?? null,
+          initialThread,
+          initialLikes,
+        },
+      };
+    }),
+  );
 }
 
 interface Props {
   doc: DocumentRecord;
   recordUri: string | null;
   bskyPostUri: string | null;
+  initialThread?: ThreadResult;
+  initialLikes?: LikesResult;
 }
-const { doc, recordUri, bskyPostUri } = Astro.props;
+const { doc, recordUri, bskyPostUri, initialThread, initialLikes } = Astro.props;
 
 // SLIMS-64: prefer the rich `content` union's markdown member, rendered to
 // HTML server-side, when present — falling back to textContent's plaintext
@@ -76,9 +121,17 @@ const dateFmt = new Intl.DateTimeFormat("en", {
     bskyPostUri && (
       <section class="comments" aria-labelledby="comments-heading">
         <h2 id="comments-heading">Comments</h2>
-        {/* Client-hydrated island. The article above is 100% static HTML; only
-            this thread + the like count fetch from the AppView in the browser. */}
-        <CommentThread client:visible post={bskyPostUri} />
+        {/* Client-hydrated island. The article above is 100% static HTML;
+            initialThread/initialLikes (fetched server-side above) render the
+            comments straight into this page's HTML too — verify with
+            `curl`, no browser needed — and the island revalidates once it
+            hydrates (client:visible), same as before this existed. */}
+        <CommentThread
+          client:visible
+          post={bskyPostUri}
+          initialThread={initialThread}
+          initialLikes={initialLikes}
+        />
       </section>
     )
   }

@@ -43,6 +43,41 @@
   color: var(--muted);
 }
 
+/* ── Post-level like button (SLIMS-69) ────────────────────────────────────── */
+
+.hedgerow-post-likes {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.hedgerow-like-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.3rem 0.7rem;
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
+}
+.hedgerow-like-button[data-liked] {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.hedgerow-like-button[data-busy] {
+  opacity: 0.7;
+}
+.hedgerow-like-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 /* ── Thread scaffolding ────────────────────────────────────────────────── */
 
 .hedgerow-status,
@@ -92,6 +127,58 @@
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  position: relative;
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+
+/* Entry transition (SLIMS-69): @hedgerow/react stamps data-entering for one
+   frame after ANY Comments.Item first mounts — a brand new optimistic reply,
+   a node showing up for the first time on revalidate, or (since keys are
+   fresh on first paint too) the initial list itself. We lean into that last
+   part deliberately: a gentle fade-up on first load reads as "alive", not as
+   a glitch. Style the "before" look here; the transition above animates to
+   the resting state once React removes the attribute. */
+.hedgerow-item[data-entering] {
+  opacity: 0;
+  transform: translateY(6px);
+}
+
+/* Optimistic reply delivery state (SLIMS-69) — see @hedgerow/react's README
+   "Optimistic replies". A reply the write succeeded for is never hidden, only
+   dimmed with a small status note, confirmed or not. */
+.hedgerow-item[data-state="pending"],
+.hedgerow-item[data-state="unconfirmed"] {
+  opacity: 0.65;
+}
+.hedgerow-item[data-state="pending"] .hedgerow-content::after,
+.hedgerow-item[data-state="unconfirmed"] .hedgerow-content::after {
+  display: block;
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  font-style: italic;
+  color: var(--muted);
+}
+.hedgerow-item[data-state="pending"] .hedgerow-content::after {
+  content: "Sending…";
+}
+.hedgerow-item[data-state="unconfirmed"] .hedgerow-content::after {
+  content: "Not showing for others yet — it may take a moment.";
+}
+/* Brief hand-off flash the instant a pending reply is confirmed by a real
+   fetch, before data-state disappears entirely (see DeliveryState in
+   @hedgerow/react). Pure CSS, no JS beyond the attribute itself. */
+.hedgerow-item[data-state="confirmed"] {
+  animation: hedgerow-confirmed-flash 1.2s ease;
+}
+@keyframes hedgerow-confirmed-flash {
+  0% {
+    background: color-mix(in srgb, var(--accent) 12%, transparent);
+  }
+  100% {
+    background: transparent;
+  }
 }
 
 .hedgerow-head {
@@ -129,6 +216,34 @@
   gap: 1.25rem;
   font-size: 0.85rem;
   color: var(--muted);
+}
+
+/* Per-comment like/reply triggers (SLIMS-69) — plain inline buttons that read
+   like the surrounding text, echoing .hedgerow-reply/.hedgerow-item-reply's
+   look rather than the pill-shaped post-level .hedgerow-like-button. */
+.hedgerow-item-like,
+.hedgerow-item-reply-trigger {
+  font: inherit;
+  font-size: 0.85rem;
+  color: var(--muted);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.hedgerow-item-like[data-liked] {
+  color: var(--accent);
+  font-weight: 600;
+}
+.hedgerow-item-like[data-busy] {
+  opacity: 0.7;
+}
+.hedgerow-item-like:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.hedgerow-item-reply-trigger:hover {
+  color: var(--accent);
 }
 
 /* Nested replies: one indented rail per level. `data-depth` lets you cap or
@@ -264,6 +379,32 @@
   text-decoration: underline;
 }
 
+/* Retargeting banner (SLIMS-69) — one composer instance, aimed at either the
+   root post or a specific comment via Comments.ReplyButton; see ReplyBox in
+   CommentThread.tsx. */
+.hedgerow-reply-target {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 0.6rem;
+  font-size: 0.82rem;
+  color: var(--fg);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  border-radius: 0.4rem;
+}
+.hedgerow-reply-target-cancel {
+  font: inherit;
+  font-size: 0.78rem;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
 .hedgerow-reply-field {
   width: 100%;
   padding: 0.6rem 0.75rem;
@@ -285,11 +426,4 @@
   margin: 0;
   font-size: 0.85rem;
   color: var(--accent);
-}
-
-.hedgerow-reply-delayed {
-  margin: 0;
-  font-size: 0.82rem;
-  font-style: italic;
-  color: var(--muted);
 }

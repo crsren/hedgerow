@@ -1,7 +1,7 @@
-import { describe, it, expect } from "vitest";
-import { render, act, waitFor, within } from "@testing-library/react";
-import { Comments } from "../src/index";
-import type { RawGetPostThreadResponse } from "@hedgerow/comments";
+import { describe, it, expect, vi } from "vitest";
+import { render, act, waitFor, within, fireEvent } from "@testing-library/react";
+import { Comments, useCommentsContext, type OptimisticReplyInput } from "../src/index";
+import type { Comment, RawGetPostThreadResponse } from "@hedgerow/comments";
 import { loadFixture, jsonResponse, stubFetch, deferred, ROOT_URI } from "./helpers";
 
 /** The canonical item template, exercised by most tests. */
@@ -304,6 +304,177 @@ describe("Comments accessibility", () => {
       </Comments.Root>,
     );
     await waitFor(() => expect(getByTestId("list").getAttribute("role")).toBe("presentation"));
+  });
+});
+
+describe("Comments.LikeButton / Comments.ReplyButton (per-comment interactions, SLIMS-69)", () => {
+  it("LikeButton is disabled and ReplyButton unrendered when onCommentAction is omitted (no reader session)", async () => {
+    const stub = threadStub("getPostThread");
+    const { container } = render(
+      <Comments.Root post={ROOT_URI} fetchImpl={stub.fetch}>
+        <Comments.List>
+          <Comments.Item>
+            <Comments.LikeButton data-testid="like" />
+            <Comments.ReplyButton data-testid="reply" />
+            <Comments.Replies />
+          </Comments.Item>
+        </Comments.List>
+      </Comments.Root>,
+    );
+    await waitFor(() => expect(container.querySelector('[data-testid="like"]')).not.toBeNull());
+    expect((container.querySelector('[data-testid="like"]') as HTMLButtonElement).disabled).toBe(true);
+    expect(container.querySelector('[data-testid="reply"]')).toBeNull();
+  });
+
+  it("LikeButton calls onCommentAction with the node and toggles optimistically; ReplyButton fires 'reply'", async () => {
+    const stub = threadStub("getPostThread");
+    const onCommentAction = vi.fn(async () => {});
+    const isCommentLiked = () => false;
+    const { container } = render(
+      <Comments.Root
+        post={ROOT_URI}
+        fetchImpl={stub.fetch}
+        onCommentAction={onCommentAction}
+        isCommentLiked={isCommentLiked}
+      >
+        <Comments.List>
+          <Comments.Item>
+            <Comments.LikeButton data-testid="like" />
+            <Comments.ReplyButton data-testid="reply" />
+            <Comments.Replies />
+          </Comments.Item>
+        </Comments.List>
+      </Comments.Root>,
+    );
+    await waitFor(() => expect(container.querySelector('[data-testid="like"]')).not.toBeNull());
+    const like = container.querySelector('[data-testid="like"]') as HTMLButtonElement;
+    expect(like.disabled).toBe(false);
+
+    fireEvent.click(like);
+    expect(like.getAttribute("data-liked")).toBe("");
+    await waitFor(() => expect(onCommentAction).toHaveBeenCalledWith("like", expect.objectContaining({ type: "comment" })));
+
+    const reply = container.querySelector('[data-testid="reply"]') as HTMLButtonElement;
+    fireEvent.click(reply);
+    expect(onCommentAction).toHaveBeenCalledWith("reply", expect.objectContaining({ type: "comment" }));
+  });
+
+  it("reflects isCommentLiked's per-node answer", async () => {
+    const stub = threadStub("getPostThread");
+    const likedUris = new Set<string>();
+    const { container } = render(
+      <Comments.Root
+        post={ROOT_URI}
+        fetchImpl={stub.fetch}
+        onCommentAction={vi.fn()}
+        isCommentLiked={(node: Comment) => likedUris.has(node.uri)}
+      >
+        <Comments.List>
+          <Comments.Item>
+            <Comments.LikeButton data-testid="like" />
+            <Comments.Replies />
+          </Comments.Item>
+        </Comments.List>
+      </Comments.Root>,
+    );
+    await waitFor(() => expect(container.querySelector('[data-testid="like"]')).not.toBeNull());
+    const first = container.querySelector('[data-testid="like"]') as HTMLButtonElement;
+    expect(first.getAttribute("aria-pressed")).toBe("false");
+    expect(first.hasAttribute("data-liked")).toBe(false);
+  });
+});
+
+describe("Comments optimistic replies (data-state / data-entering, SLIMS-69)", () => {
+  it("addOptimisticReply inserts a pending node immediately, marked data-state=pending", async () => {
+    const stub = threadStub("getPostThread");
+    let addOptimisticReply!: (input: OptimisticReplyInput) => void;
+
+    function Capture() {
+      addOptimisticReply = useCommentsContext().addOptimisticReply;
+      return null;
+    }
+
+    const { container, findByText } = render(
+      <Comments.Root post={ROOT_URI} fetchImpl={stub.fetch}>
+        <Capture />
+        <Comments.List>
+          <Comments.Item>
+            <Comments.Content />
+          </Comments.Item>
+        </Comments.List>
+      </Comments.Root>,
+    );
+    await waitFor(() => expect(container.querySelector("[data-comment]")).not.toBeNull());
+
+    act(() => {
+      addOptimisticReply({
+        ref: { uri: "at://did:plc:me/app.bsky.feed.post/opt1", cid: "bafyopt1" },
+        parentUri: ROOT_URI,
+        text: "hot off the press",
+        author: { did: "did:plc:me", handle: "me.bsky.social" },
+      });
+    });
+
+    const node = await findByText("hot off the press");
+    const item = node.closest("[data-comment]")!;
+    expect(item.getAttribute("data-state")).toBe("pending");
+  });
+
+  it("flips a stale optimistic entry to unconfirmed after optimisticGiveUpAfter refetches without seeing it", async () => {
+    const body = loadFixture<RawGetPostThreadResponse>("getPostThread");
+    const stub = stubFetch((method) =>
+      method === "app.bsky.feed.getPostThread" ? jsonResponse(body) : jsonResponse({}, 501),
+    );
+
+    let addOptimisticReply!: (input: OptimisticReplyInput) => void;
+    let refetch!: () => void;
+    function Capture() {
+      const ctx = useCommentsContext();
+      addOptimisticReply = ctx.addOptimisticReply;
+      refetch = ctx.refetch;
+      return null;
+    }
+
+    const { container, findByText } = render(
+      <Comments.Root post={ROOT_URI} fetchImpl={stub.fetch} optimisticGiveUpAfter={2}>
+        <Capture />
+        <Comments.List>
+          <Comments.Item>
+            <Comments.Content />
+          </Comments.Item>
+        </Comments.List>
+      </Comments.Root>,
+    );
+    await waitFor(() => expect(container.querySelector("[data-comment]")).not.toBeNull());
+
+    act(() => {
+      addOptimisticReply({
+        ref: { uri: "at://did:plc:me/app.bsky.feed.post/never-indexed", cid: "bafynever" },
+        parentUri: ROOT_URI,
+        text: "will this ever show up server-side",
+        author: { did: "did:plc:me", handle: "me.bsky.social" },
+      });
+    });
+    const node = await findByText("will this ever show up server-side");
+    const item = () => node.closest("[data-comment]")!;
+    expect(item().getAttribute("data-state")).toBe("pending");
+
+    // Two refetches, neither of which contain the new uri (fixture is static).
+    await act(async () => refetch());
+    await act(async () => refetch());
+
+    await waitFor(() => expect(item().getAttribute("data-state")).toBe("unconfirmed"));
+    // Never removed — the node is still right there in the DOM.
+    expect(container.contains(node)).toBe(true);
+  });
+
+  it("Comments.Item carries data-entering on first mount, cleared one frame later", async () => {
+    const stub = threadStub("getPostThread");
+    const { container } = render(<Thread post={ROOT_URI} fetchImpl={stub.fetch} />);
+    await waitFor(() => expect(container.querySelector("[data-comment]")).not.toBeNull());
+    const item = container.querySelector("[data-comment]")!;
+    // rAF-scheduled removal — jsdom's rAF runs on the next animation frame tick.
+    await waitFor(() => expect(item.hasAttribute("data-entering")).toBe(false));
   });
 });
 

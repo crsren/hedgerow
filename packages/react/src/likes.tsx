@@ -7,6 +7,7 @@ import { renderElement, dataAttrs } from "./render";
 import type { HeadlessProps } from "./render";
 import { LikesRootContext, LikeItemContext, useLikesContext, useLikeItemContext } from "./context";
 import { useLikes, type UseLikesOptions, type UseLikesReturn } from "./useLikes";
+import { useLikeButton, type UseLikeButtonOptions } from "./useLikeButton";
 import type { PartProps } from "./comments";
 
 const keyOf = (like: Like): string => like.actor.did;
@@ -87,6 +88,59 @@ export const Count = React.forwardRef<HTMLSpanElement, LikesCountProps>(function
     style,
     ref,
     props: { ...rest, ...dataAttrs({ total }), children: children ?? total },
+  });
+});
+
+// ── Button (like/unlike the post — SLIMS-69) ────────────────────────────────
+
+export interface LikeButtonState {
+  liked: boolean | undefined;
+  count: number;
+  isBusy: boolean;
+  isDisabled: boolean;
+}
+
+export interface LikeButtonProps
+  extends UseLikeButtonOptions,
+    HeadlessProps<LikeButtonState>,
+    Omit<React.ComponentPropsWithoutRef<"button">, "className" | "style" | "children" | "disabled" | "onClick"> {}
+
+/**
+ * Standalone like/unlike toggle for the post itself. No `Likes.Root` needed —
+ * `liked`/`onLike`/`onUnlike` are injected props (this package never imports
+ * `@hedgerow/reader` or any auth library, per docs/architecture.md), same
+ * idiom as `Reply.Root`'s `session`/`onSubmit`. `count` is whatever
+ * authoritative number you pass in (e.g. `Comments.Root`'s `stats.likeCount`)
+ * — the button optimistically adjusts it by ±1 around your in-flight/
+ * just-completed toggle, then defers back to your prop once it catches up.
+ * Reflects `data-liked` / `data-busy` / `data-disabled`.
+ */
+export const Button = React.forwardRef<HTMLButtonElement, LikeButtonProps>(function LikesButton(
+  { liked, count, onLike, onUnlike, disabled, render, className, style, children, ...rest },
+  ref,
+) {
+  const value = useLikeButton({ liked, count, onLike, onUnlike, ...(disabled !== undefined ? { disabled } : {}) });
+  const state: LikeButtonState = {
+    liked: value.liked,
+    count: value.count,
+    isBusy: value.isBusy,
+    isDisabled: value.isDisabled,
+  };
+  return renderElement("button", {
+    state,
+    render,
+    className,
+    style,
+    ref,
+    props: {
+      type: "button",
+      ...rest,
+      disabled: value.isDisabled,
+      "aria-pressed": value.liked === true,
+      onClick: () => void value.toggle(),
+      ...dataAttrs({ liked: value.liked === true, busy: value.isBusy, disabled: value.isDisabled }),
+      children: children ?? (value.liked ? `♥ ${value.count}` : `♡ ${value.count}`),
+    },
   });
 });
 

@@ -33,8 +33,8 @@
 // — see the reader.ts test suite for that behavior in isolation.
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { expect, test, type Page } from "@playwright/test";
-import { logInWithBluesky } from "./helpers";
+import { expect, test } from "@playwright/test";
+import { logIn, scrollToComments } from "./helpers";
 
 interface LocalNet {
   seeded: { slug: string; title: string; anchor: { uri: string; cid: string } } | null;
@@ -44,21 +44,6 @@ interface LocalNet {
 const localNet: LocalNet = JSON.parse(
   readFileSync(fileURLToPath(new URL("./.local-net.json", import.meta.url)), "utf8"),
 );
-
-/**
- * Drive the full reader login (see ./helpers.ts's logInWithBluesky for the
- * shared handle/password/consent steps) and land back on the post page.
- * Asserts the signed-in state is visible before returning.
- */
-async function logIn(page: Page, handle: string, password: string): Promise<void> {
-  await logInWithBluesky(page, handle, password);
-
-  // Back on the post page, now with the fragment-carried OAuth callback
-  // (#state=...&iss=...&code=...) for reader.restore()'s client.init() to
-  // complete client-side.
-  await page.waitForURL(new RegExp(localNet.seeded!.slug), { timeout: 15_000 });
-  await expect(page.getByText(/^Replying as/)).toBeVisible({ timeout: 10_000 });
-}
 
 test.beforeEach(() => {
   test.skip(!localNet.seeded, "dev-net seeded no document to test against");
@@ -71,10 +56,10 @@ test("reader can log in with their local atproto account via OAuth", async ({ pa
   const { handle, password } = localNet.reader!;
 
   await page.goto(`/${slug}`);
-  await page.locator("section.hedgerow").scrollIntoViewIfNeeded();
+  await scrollToComments(page);
   await page.waitForSelector(".hedgerow-reply-box");
 
-  await logIn(page, handle, password);
+  await logIn(page, handle, password, slug);
 
   // Signed in: the login form is gone, the composer (and Sign out) are there.
   await expect(page.getByPlaceholder("your-handle.bsky.social")).toBeHidden();
@@ -88,9 +73,9 @@ test("logged-in reader can post a reply that appears in the thread", async ({ pa
   const { handle, password } = localNet.reader!;
 
   await page.goto(`/${slug}`);
-  await page.locator("section.hedgerow").scrollIntoViewIfNeeded();
+  await scrollToComments(page);
   await page.waitForSelector(".hedgerow-reply-box");
-  await logIn(page, handle, password);
+  await logIn(page, handle, password, slug);
 
   const replyText = `E2E reply from ${handle} — ${Date.now()}`;
   await page.getByPlaceholder("Write a reply…").fill(replyText);
@@ -99,12 +84,93 @@ test("logged-in reader can post a reply that appears in the thread", async ({ pa
     .getByRole("button", { name: /^reply$/i })
     .click();
 
-  // The write is real (com.atproto.repo.createRecord on carol's own repo);
-  // the UI's indexing-lag retry (up to 3 refetches, 2s apart) is what makes
-  // this converge without a hard page reload — see CommentThread.tsx.
-  await expect(page.getByText(replyText)).toBeVisible({ timeout: 20_000 });
-  // The field clears and the "on its way" fallback note never had to show —
-  // proof this was the fast path, not the give-up path.
+  // SLIMS-69: the reply is now optimistically inserted the instant
+  // createReply() resolves (see useComments' addOptimisticReply /
+  // CommentThread.tsx's ReplyBox) — no need to wait out the AppView's
+  // indexing lag to see it show up at all.
+  const item = page.locator(".hedgerow-item", { hasText: replyText });
+  await expect(item).toBeVisible({ timeout: 5_000 });
+  await expect(item).toHaveAttribute("data-state", "pending");
   await expect(page.getByPlaceholder("Write a reply…")).toHaveValue("");
-  await expect(page.locator(".hedgerow-reply-delayed")).toHaveCount(0);
+
+  // The write is real (com.atproto.repo.createRecord on carol's own repo) —
+  // once the shim's own getPostThread has indexed it (the UI's own
+  // confirm-sweep retry loop, up to 3 refetches a few seconds apart), the
+  // pending marker clears and it's an ordinary comment.
+  await expect(item).not.toHaveAttribute("data-state", "pending", { timeout: 20_000 });
+  await expect(item).not.toHaveAttribute("data-state", "unconfirmed");
+});
+
+test("reader can like the post: count increments, survives reload, unlike decrements", async ({ page }) => {
+  test.setTimeout(45_000);
+  const { slug } = localNet.seeded!;
+  const { handle, password } = localNet.reader!;
+
+  await page.goto(`/${slug}`);
+  await scrollToComments(page);
+  await page.waitForSelector(".hedgerow-reply-box");
+  await logIn(page, handle, password, slug);
+
+  const likeButton = page.locator(".hedgerow-like-button");
+  await expect(likeButton).toBeEnabled();
+  const before = await likeCountText(page);
+
+  await likeButton.click();
+  await expect(likeButton).toHaveAttribute("data-liked", "");
+  await expect
+    .poll(async () => likeCountText(page))
+    .toBe(before + 1);
+
+  // Survives reload: this is a real app.bsky.feed.like record, not just
+  // client-side optimistic state — reader.findLike() re-derives "liked" from
+  // the reader's own repo on the fresh page load.
+  await page.reload();
+  await page.waitForSelector("section.hedgerow");
+  await scrollToComments(page);
+  await expect(page.locator(".hedgerow-like-button")).toHaveAttribute("data-liked", "", { timeout: 10_000 });
+  await expect.poll(async () => likeCountText(page)).toBe(before + 1);
+
+  await page.locator(".hedgerow-like-button").click();
+  await expect(page.locator(".hedgerow-like-button")).not.toHaveAttribute("data-liked", "");
+  await expect.poll(async () => likeCountText(page)).toBe(before);
+});
+
+async function likeCountText(page: import("@playwright/test").Page): Promise<number> {
+  const text = await page.locator(".hedgerow-likecount").textContent();
+  return Number((text ?? "").match(/\d+/)?.[0] ?? NaN);
+}
+
+test("reader can reply to a specific comment, and it nests under it", async ({ page }) => {
+  test.setTimeout(60_000);
+  const { slug } = localNet.seeded!;
+  const { handle, password } = localNet.reader!;
+
+  await page.goto(`/${slug}`);
+  await scrollToComments(page);
+  await page.waitForSelector(".hedgerow-reply-box");
+  await logIn(page, handle, password, slug);
+
+  // Target bob's first seeded reply specifically (dev-net.mjs seeds two, this
+  // is the top-level one) — not the root post.
+  const targetItem = page.locator(".hedgerow-item", {
+    hasText: "Nice piece — this is exactly why I moved",
+  });
+  await targetItem.getByRole("button", { name: /^reply$/i }).first().click();
+
+  // Composer retargeted: "Replying to @bob.test" banner, cancel affordance.
+  await expect(page.locator(".hedgerow-reply-target")).toContainText("bob.test");
+
+  const replyText = `Nested E2E reply from ${handle} — ${Date.now()}`;
+  await page.getByPlaceholder("Write a reply…").fill(replyText);
+  await page
+    .locator(".hedgerow-reply-box")
+    .getByRole("button", { name: /^reply$/i })
+    .click();
+
+  // Nested UNDER the targeted comment, not appended at the top level.
+  const nested = targetItem.locator(".hedgerow-replies .hedgerow-item", { hasText: replyText });
+  await expect(nested).toBeVisible({ timeout: 5_000 });
+
+  // Retargeting reset back to the root post after a successful send.
+  await expect(page.locator(".hedgerow-reply-target")).toHaveCount(0);
 });

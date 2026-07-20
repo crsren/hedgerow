@@ -1,5 +1,5 @@
-import { describe, it, expect } from "vitest";
-import { render, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { render, waitFor, fireEvent } from "@testing-library/react";
 import { Likes } from "../src/index";
 import { loadFixture, jsonResponse, stubFetch, ROOT_URI } from "./helpers";
 
@@ -97,5 +97,62 @@ describe("Likes components", () => {
     const alert = await findByText("Could not load likes");
     expect(alert.getAttribute("role")).toBe("alert");
     expect(alert.hasAttribute("data-error")).toBe(true);
+  });
+});
+
+describe("Likes.Button", () => {
+  it("renders unliked, toggles to liked on click, and optimistically bumps the count", async () => {
+    const onLike = vi.fn(async () => {});
+    const onUnlike = vi.fn(async () => {});
+    const { getByRole } = render(
+      <Likes.Button liked={false} count={4} onLike={onLike} onUnlike={onUnlike} />,
+    );
+    const button = getByRole("button") as HTMLButtonElement;
+    expect(button.textContent).toBe("♡ 4");
+    expect(button.getAttribute("aria-pressed")).toBe("false");
+    expect(button.hasAttribute("data-liked")).toBe(false);
+
+    fireEvent.click(button);
+    // Optimistic: flips immediately, before onLike resolves.
+    expect(button.textContent).toBe("♥ 5");
+    expect(button.hasAttribute("data-liked")).toBe(true);
+    expect(button.hasAttribute("data-busy")).toBe(true);
+
+    await waitFor(() => expect(onLike).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(button.hasAttribute("data-busy")).toBe(false));
+    expect(onUnlike).not.toHaveBeenCalled();
+  });
+
+  it("rolls back the optimistic count when onLike rejects", async () => {
+    const onLike = vi.fn(async () => {
+      throw new Error("write failed");
+    });
+    const { getByRole } = render(<Likes.Button liked={false} count={4} onLike={onLike} onUnlike={vi.fn()} />);
+    const button = getByRole("button") as HTMLButtonElement;
+
+    fireEvent.click(button);
+    expect(button.textContent).toBe("♥ 5");
+    await waitFor(() => expect(button.textContent).toBe("♡ 4")); // rolled back
+    expect(button.hasAttribute("data-liked")).toBe(false);
+  });
+
+  it("is disabled when the liked state is unknown or disabled is set", () => {
+    const { getByRole, rerender } = render(
+      <Likes.Button liked={undefined} count={0} onLike={vi.fn()} onUnlike={vi.fn()} />,
+    );
+    expect((getByRole("button") as HTMLButtonElement).disabled).toBe(true);
+
+    rerender(<Likes.Button liked={false} count={0} onLike={vi.fn()} onUnlike={vi.fn()} disabled />);
+    expect((getByRole("button") as HTMLButtonElement).disabled).toBe(true);
+    expect(getByRole("button").getAttribute("data-disabled")).toBe("");
+  });
+
+  it("toggles unliked when already liked", async () => {
+    const onUnlike = vi.fn(async () => {});
+    const { getByRole } = render(<Likes.Button liked={true} count={5} onLike={vi.fn()} onUnlike={onUnlike} />);
+    const button = getByRole("button");
+    fireEvent.click(button);
+    expect(button.textContent).toBe("♡ 4");
+    await waitFor(() => expect(onUnlike).toHaveBeenCalledTimes(1));
   });
 });

@@ -13,6 +13,8 @@ import {
   Content,
   Timestamp,
   Likes as CommentLikes,
+  LikeButton as CommentsLikeButton,
+  ReplyButton as CommentsReplyButton,
   Labels,
   Fallback,
   Stats,
@@ -24,6 +26,7 @@ import {
 import {
   Root as LikesRoot,
   Count,
+  Button as LikesButton,
   Avatars,
   Avatar as LikeAvatar,
   Loading as LikesLoading,
@@ -61,6 +64,10 @@ export const Comments = {
   Timestamp,
   /** The comment's own like count (not to be confused with the `Likes.*` namespace). */
   Likes: CommentLikes,
+  /** Like/unlike toggle for this comment — see `Comments.Root`'s `onCommentAction`/`isCommentLiked`. */
+  LikeButton: CommentsLikeButton,
+  /** "Reply to this comment" trigger — see `Comments.Root`'s `onCommentAction`. */
+  ReplyButton: CommentsReplyButton,
   Labels,
   Fallback,
   Stats,
@@ -74,6 +81,8 @@ export const Comments = {
 export const Likes = {
   Root: LikesRoot,
   Count,
+  /** Standalone like/unlike toggle for the post — no `Likes.Root` needed, see likes.tsx. */
+  Button: LikesButton,
   Avatars,
   Avatar: LikeAvatar,
   Loading: LikesLoading,
@@ -117,6 +126,7 @@ export { useComments } from "./useComments";
 export { useLikes } from "./useLikes";
 export { useReply } from "./useReply";
 export { useEditor } from "./useEditor";
+export { useLikeButton } from "./useLikeButton";
 export { useCommentNode } from "./hooks";
 export {
   useCommentsContext,
@@ -132,9 +142,16 @@ export {
 export { renderElement, mergeRefs, dataAttrs } from "./render";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-export type { UseCommentsOptions, UseCommentsReturn, RequestStatus } from "./useComments";
+export type {
+  UseCommentsOptions,
+  UseCommentsReturn,
+  RequestStatus,
+  DeliveryState,
+  OptimisticReplyInput,
+} from "./useComments";
 export type { UseLikesOptions, UseLikesReturn } from "./useLikes";
-export type { CommentItemContextValue } from "./context";
+export type { UseLikeButtonOptions, UseLikeButtonReturn } from "./useLikeButton";
+export type { CommentItemContextValue, CommentAction, CommentsContextValue } from "./context";
 export type {
   HeadlessProps,
   RenderProp,
@@ -161,6 +178,10 @@ export type {
   CommentsTimestampProps,
   LikesState,
   CommentsLikesProps,
+  CommentsLikeButtonState,
+  CommentsLikeButtonProps,
+  CommentsReplyButtonState,
+  CommentsReplyButtonProps,
   LabelsState,
   CommentsLabelsProps,
   FallbackState,
@@ -179,6 +200,8 @@ export type {
   LikesRootProps,
   LikesCountState,
   LikesCountProps,
+  LikeButtonState,
+  LikeButtonProps,
   LikesAvatarsState,
   LikesAvatarsProps,
   LikeAvatarState,

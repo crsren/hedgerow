@@ -4,7 +4,11 @@
 // TestNetworkNoAppView deliberately doesn't run — this shim gets the same
 // three read endpoints the comments island needs, computed on the fly by
 // reading app.bsky.feed.post / app.bsky.feed.like records straight off the
-// local PDS's repos:
+// local PDS's repos. Which repos to read is discovered live via
+// com.atproto.sync.listRepos (see listAcrossAccounts below), not a fixed seed
+// list — so an account created after this shim started (a reader signing up
+// mid-session, SLIMS-69) is included too, not just dev-net.mjs's boot-time
+// accounts:
 //
 //   - app.bsky.feed.getPostThread   (packages/comments/src/thread.ts)
 //   - app.bsky.feed.getLikes        (packages/comments/src/likes.ts)
@@ -41,10 +45,56 @@ async function getRecord(pds, repo, collection, rkey, fetchImpl) {
   return res.json();
 }
 
-/** All records of `collection` across every known account, tagged with the owning did. */
+/**
+ * Every DID the PDS currently hosts a repo for, discovered live via
+ * com.atproto.sync.listRepos. Paged, though in practice a dev-net PDS never
+ * gets remotely close to needing a second page.
+ */
+async function listRepoDids(pds, fetchImpl) {
+  const dids = [];
+  let cursor;
+  do {
+    const u = new URL(`${pds}/xrpc/com.atproto.sync.listRepos`);
+    u.searchParams.set("limit", "1000");
+    if (cursor) u.searchParams.set("cursor", cursor);
+    const res = await fetchImpl(u);
+    if (!res.ok) break;
+    const body = await res.json();
+    for (const r of body.repos ?? []) dids.push(r.did);
+    cursor = body.cursor;
+  } while (cursor);
+  return dids;
+}
+
+/** The PDS's own record of a repo's handle — used to backfill `accounts` for a did it didn't already know about. */
+async function describeRepo(pds, did, fetchImpl) {
+  const u = new URL(`${pds}/xrpc/com.atproto.repo.describeRepo`);
+  u.searchParams.set("repo", did);
+  const res = await fetchImpl(u);
+  if (!res.ok) return null;
+  return res.json();
+}
+
+/**
+ * All records of `collection` across every repo the PDS currently hosts —
+ * discovered live via com.atproto.sync.listRepos, NOT the static `accounts`
+ * seed map. This is what makes a repo created after this shim started (a
+ * reader who signs up mid-session, or any local test account minted post-boot)
+ * show up in threads/likes at all: with the old `accounts.keys()`-only
+ * iteration, such a repo's posts/likes were invisible no matter how it
+ * replied — createRecord would succeed, but getPostThread would never walk to
+ * it. `accounts` is still consulted for handle/displayName first (cheap, no
+ * extra round trip); a did missing from it gets a live describeRepo lookup,
+ * cached back into the map so repeat requests don't re-fetch it.
+ */
 async function listAcrossAccounts(pds, accounts, collection, fetchImpl) {
+  const dids = await listRepoDids(pds, fetchImpl);
   const lists = await Promise.all(
-    [...accounts.keys()].map(async (did) => {
+    dids.map(async (did) => {
+      if (!accounts.has(did)) {
+        const info = await describeRepo(pds, did, fetchImpl);
+        accounts.set(did, { handle: info?.handle ?? did });
+      }
       const records = await listRecords(pds, did, collection, fetchImpl);
       return records.map((r) => ({ ...r, did }));
     }),
@@ -148,7 +198,11 @@ async function buildLikes(pds, accounts, atUri, limit, cursor, fetchImpl) {
 /**
  * Create the shim. `accounts` is a live `Map<did, {handle, displayName?}>` —
  * mutate it (e.g. after creating a new local test account) and subsequent
- * requests pick up the change immediately; the shim never caches.
+ * requests pick up the change immediately. It's a name/displayName cache, not
+ * the source of truth for WHICH repos exist, though: `listAcrossAccounts`
+ * discovers those live via com.atproto.sync.listRepos and backfills this map
+ * for any did it doesn't already have, so a repo never needs to be seeded
+ * into `accounts` up front to be visible.
  */
 export function createAppViewShim({ pdsUrl, accounts, fetchImpl = fetch }) {
   const server = createServer(async (req, res) => {

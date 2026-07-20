@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@astrojs/react": "^4.2.0",
+    "@hedgerow/comments": "workspace:*",
     "@hedgerow/publish": "workspace:*",
     "@hedgerow/react": "workspace:*",
     "@hedgerow/reader": "workspace:*",
