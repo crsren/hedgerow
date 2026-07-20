@@ -246,7 +246,7 @@ function ReplyBox({
   replyTarget: ReplyTarget | null;
   onCancelReplyTarget: () => void;
 }) {
-  const { data, root, addOptimisticReply, refetch } = useCommentsContext();
+  const { data, root, addOptimisticReply, refetch, deliveryStateOf } = useCommentsContext();
   const { session, setSession } = useReaderSession();
   const [handleInput, setHandleInput] = useState("");
   const [signingIn, setSigningIn] = useState(false);
@@ -261,11 +261,28 @@ function ReplyBox({
   // composer in a submitting state for these extra seconds.
   const retryTimers = useRef<ReturnType<typeof setTimeout>[]>([]);
   useEffect(() => () => retryTimers.current.forEach(clearTimeout), []);
-  const scheduleConfirmRetries = useCallback(() => {
-    for (const delayMs of [2000, 4000, 6000]) {
-      retryTimers.current.push(setTimeout(refetch, delayMs));
-    }
-  }, [refetch]);
+  // Each retry re-checks whether the reply is still unconfirmed before
+  // refetching — once a refetch confirms it, the remaining timers become
+  // no-ops instead of firing extra fetches (each of which used to cost a
+  // visible re-render). Refs, not state: the timer closures must see the
+  // CURRENT deliveryStateOf, not the one from the render that armed them.
+  const pendingUriRef = useRef<string | null>(null);
+  const deliveryStateOfRef = useRef(deliveryStateOf);
+  deliveryStateOfRef.current = deliveryStateOf;
+  const scheduleConfirmRetries = useCallback(
+    (uri: string) => {
+      pendingUriRef.current = uri;
+      for (const delayMs of [2000, 4000, 6000]) {
+        retryTimers.current.push(
+          setTimeout(() => {
+            const pending = pendingUriRef.current;
+            if (pending && deliveryStateOfRef.current(pending) === "pending") refetch();
+          }, delayMs),
+        );
+      }
+    },
+    [refetch],
+  );
 
   // No strongRef to reply against yet (still loading, or the root itself is a
   // deleted/blocked stub) — nothing sensible to render.
@@ -317,7 +334,7 @@ function ReplyBox({
       },
     });
     onCancelReplyTarget(); // back to replying-to-root once this send is in flight
-    scheduleConfirmRetries();
+    scheduleConfirmRetries(ref.uri);
   }
 
   if (session === undefined) return null; // avoid a signed-out flash while resuming

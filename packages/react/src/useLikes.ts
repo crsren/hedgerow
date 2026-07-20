@@ -34,7 +34,10 @@ export interface UseLikesReturn {
   cursor: string | undefined;
   refetch: () => void;
   isIdle: boolean;
+  /** True only while the INITIAL fetch is in flight (no data yet) — background refetches report {@link isRevalidating}. */
   isLoading: boolean;
+  /** True while a refetch is in flight WITH previous data still showing. */
+  isRevalidating: boolean;
   isSuccess: boolean;
   isError: boolean;
   /** True once loaded with zero likes. */
@@ -98,7 +101,8 @@ export function useLikes(options: UseLikesOptions): UseLikesReturn {
     cursor: state.data?.cursor,
     refetch: load,
     isIdle: status === "idle",
-    isLoading: status === "loading",
+    isLoading: status === "loading" && state.data === undefined,
+    isRevalidating: status === "loading" && state.data !== undefined,
     isSuccess,
     isError: status === "error",
     isEmpty: isSuccess && likes.length === 0,

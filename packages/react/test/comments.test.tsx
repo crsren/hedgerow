@@ -120,6 +120,58 @@ describe("Comments state machine", () => {
     expect(queryByText("Loading…")).toBeNull();
   });
 
+  it("a background refetch never re-shows Loading over an existing thread (isRevalidating, not isLoading)", async () => {
+    const body = loadFixture<RawGetPostThreadResponse>("getPostThread");
+    let gate: ReturnType<typeof deferred<Response>> | null = null;
+    let calls = 0;
+    const stub = stubFetch((method) => {
+      if (method !== "app.bsky.feed.getPostThread") return jsonResponse({}, 501);
+      calls += 1;
+      if (calls === 1) return jsonResponse(body);
+      gate = deferred<Response>();
+      return gate.promise;
+    });
+
+    function RefetchProbe() {
+      const { refetch, isLoading, isRevalidating } = useCommentsContext();
+      return (
+        <button
+          data-testid="probe"
+          data-is-loading={isLoading}
+          data-is-revalidating={isRevalidating}
+          onClick={() => refetch()}
+        />
+      );
+    }
+
+    const { container, queryByText, getByTestId } = render(
+      <Comments.Root post={ROOT_URI} fetchImpl={stub.fetch}>
+        <Comments.Loading>Loading…</Comments.Loading>
+        <Comments.List>
+          <Comments.Item>
+            <Comments.Content />
+          </Comments.Item>
+        </Comments.List>
+        <RefetchProbe />
+      </Comments.Root>,
+    );
+
+    await waitFor(() => expect(container.querySelector("[data-comment]")).not.toBeNull());
+
+    // Kick a background refetch and hold its response open.
+    fireEvent.click(getByTestId("probe"));
+    expect(queryByText("Loading…")).toBeNull(); // the old bug: this flashed in and shifted layout
+    expect(getByTestId("probe").getAttribute("data-is-loading")).toBe("false");
+    expect(getByTestId("probe").getAttribute("data-is-revalidating")).toBe("true");
+    expect(container.querySelector("[data-comment]")).not.toBeNull(); // stale data keeps rendering
+
+    await waitFor(() => expect(gate).not.toBeNull());
+    await act(async () => {
+      gate!.resolve(jsonResponse(body));
+    });
+    await waitFor(() => expect(getByTestId("probe").getAttribute("data-is-revalidating")).toBe("false"));
+  });
+
   it("renders the Error part when the fetch fails", async () => {
     const stub = stubFetch((method) =>
       method === "app.bsky.feed.getPostThread"

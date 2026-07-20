@@ -99,7 +99,16 @@ export interface UseCommentsReturn {
   /** Re-run the fetch. Also drives the optimistic-reply confirm/unconfirm sweep — see {@link DeliveryState}. */
   refetch: () => void;
   isIdle: boolean;
+  /**
+   * True only while the INITIAL fetch is in flight (no thread data yet).
+   * Background refetches — the optimistic confirm sweep, a revalidate after
+   * an SSR snapshot — keep showing the existing data and report
+   * {@link isRevalidating} instead, so `Comments.Loading` never flashes in
+   * (and shifts layout) over an already-rendered thread.
+   */
   isLoading: boolean;
+  /** True while a refetch is in flight WITH previous data still showing. */
+  isRevalidating: boolean;
   isSuccess: boolean;
   isError: boolean;
   /** True once loaded with zero visible top-level comments. */
@@ -318,7 +327,8 @@ export function useComments(options: UseCommentsOptions): UseCommentsReturn {
     setSort,
     refetch: load,
     isIdle: status === "idle",
-    isLoading: status === "loading",
+    isLoading: status === "loading" && state.data === undefined,
+    isRevalidating: status === "loading" && state.data !== undefined,
     isSuccess,
     isError: status === "error",
     isEmpty: isSuccess && comments.length === 0,
