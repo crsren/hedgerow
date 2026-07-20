@@ -16,6 +16,21 @@ import type {
  * README example points a bare handle at when there's no PDS hint yet. */
 const DEFAULT_SIGNUP_SERVICE = "https://bsky.social";
 
+/**
+ * True only for the PDS's "this record does not exist" XRPC error (`error:
+ * "RecordNotFound"`, message "Could not locate record: …"). Mirrors
+ * `@hedgerow/publish`'s helper of the same name — duplicated, not imported,
+ * per the no-dependency-between-reader-and-publish rule.
+ */
+function isRecordNotFound(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as { error?: unknown; message?: unknown };
+  return (
+    e.error === "RecordNotFound" ||
+    (typeof e.message === "string" && e.message.includes("Could not locate record"))
+  );
+}
+
 /** identity + generic record writes — createReply() needs the latter. Every
  * authorize request asks for exactly this, matching the scope embedded in
  * the client metadata (see default-client.ts's loopbackClientId and the
@@ -165,8 +180,13 @@ export function createReader(options: CreateReaderOptions = {}): Reader {
           try {
             const res = await repo().getRecord({ repo: did, collection, rkey });
             return res.data.value;
-          } catch {
-            return null; // RecordNotFound (or transient error — worst case a caller re-puts)
+          } catch (err) {
+            // Only "record doesn't exist" may become null — a transient
+            // failure must propagate, or a caller that treats null as
+            // "absent" (e.g. publishSite's anchor fallback) silently
+            // destroys data it should have preserved.
+            if (isRecordNotFound(err)) return null;
+            throw err;
           }
         },
         async deleteRecord(collection, rkey) {

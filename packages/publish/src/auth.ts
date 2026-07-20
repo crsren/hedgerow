@@ -18,6 +18,20 @@ export interface Publisher {
 }
 
 /**
+ * True only for the PDS's "this record does not exist" error — the one case
+ * `getRecord` may report as `null`. XRPC not-found surfaces as an error whose
+ * `error` field is `"RecordNotFound"` (message: "Could not locate record: …").
+ */
+export function isRecordNotFound(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as { error?: unknown; message?: unknown };
+  return (
+    e.error === "RecordNotFound" ||
+    (typeof e.message === "string" && e.message.includes("Could not locate record"))
+  );
+}
+
+/**
  * Wrap an already-authenticated {@link Agent} as a Publisher. Works for any
  * `Agent` subclass: the `AtpAgent` used in tests and the OAuth-session-backed
  * `Agent` that `oauthPublisher` builds both expose `.did` and the
@@ -36,8 +50,13 @@ export function agentPublisher(agent: Agent): Publisher {
       try {
         const res = await agent.com.atproto.repo.getRecord({ repo: did, collection, rkey });
         return res.data.value as Record<string, unknown>;
-      } catch {
-        return null; // RecordNotFound (or transient error — worst case we re-put)
+      } catch (err) {
+        // Only "record doesn't exist" may become null. A transient failure
+        // must propagate: publishSite's anchor-fallback reads the existing
+        // record to preserve its bskyPostRef, and a swallowed network error
+        // here would read as "no existing record" and strip the anchor.
+        if (isRecordNotFound(err)) return null;
+        throw err;
       }
     },
     async deleteRecord(collection, rkey) {

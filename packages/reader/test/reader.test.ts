@@ -48,7 +48,8 @@ function fakeAgent(profile: ProfileView = PROFILE) {
   const getRecord = vi.fn(
     async ({ collection, rkey }: { repo: string; collection: string; rkey: string }) => {
       const value = records.get(`${collection}/${rkey}`);
-      if (!value) throw new Error("RecordNotFound");
+      if (!value) // mirror the real XRPCError shape: error field + "Could not locate record" message
+              throw Object.assign(new Error("Could not locate record: fake"), { error: "RecordNotFound" });
       return { data: { value } };
     },
   );
@@ -334,6 +335,18 @@ describe("createReader — asPublisher", () => {
     const record = { $type: "site.standard.document", title: "Edited" };
     await publisher.putRecord("site.standard.document", "abc123", record);
     expect(await publisher.getRecord("site.standard.document", "abc123")).toEqual(record);
+  });
+
+  it("getRecord propagates transient errors instead of reporting null (anchor-preservation contract)", async () => {
+    const session = fakeSession();
+    const { client } = clientWithSession(session);
+    const { agent, getRecord } = fakeAgent();
+    getRecord.mockRejectedValueOnce(new Error("network down"));
+    const reader = createReader({ createClient: () => client, createAgent: () => agent });
+    await reader.restore();
+    const publisher = reader.asPublisher();
+
+    await expect(publisher.getRecord("site.standard.document", "abc123")).rejects.toThrow("network down");
   });
 
   it("deleteRecord removes the record via agent.com.atproto.repo.deleteRecord", async () => {

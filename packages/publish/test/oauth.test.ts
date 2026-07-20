@@ -81,7 +81,8 @@ describe("agentPublisher over an OAuth-session Agent", () => {
             async getRecord(params: { collection: string; rkey: string }) {
               calls.push({ method: "getRecord", params });
               const value = store.get(`${params.collection}/${params.rkey}`);
-              if (!value) throw new Error("RecordNotFound");
+              if (!value) // mirror the real XRPCError shape: error field + "Could not locate record" message
+              throw Object.assign(new Error("Could not locate record: fake"), { error: "RecordNotFound" });
               return { data: { value } };
             },
             async deleteRecord(params: { collection: string; rkey: string }) {
@@ -117,6 +118,27 @@ describe("agentPublisher over an OAuth-session Agent", () => {
     await pub.deleteRecord("site.standard.document", "rk1");
     // getRecord swallows RecordNotFound and returns null (so publishSite re-puts).
     expect(await pub.getRecord("site.standard.document", "rk1")).toBeNull();
+
+    // a transient failure must NOT read as "record absent" — publishSite's
+    // anchor fallback would treat null as no-existing-record and strip data
+    await expect(
+      (async () => {
+        const brokenAgent = {
+          ...agent,
+          com: {
+            atproto: {
+              repo: {
+                ...agent.com.atproto.repo,
+                getRecord: async () => {
+                  throw new Error("socket hang up");
+                },
+              },
+            },
+          },
+        };
+        return agentPublisher(brokenAgent as never).getRecord("site.standard.document", "rk1");
+      })(),
+    ).rejects.toThrow("socket hang up");
 
     // every repo call was addressed to the agent's own repo (did)
     const repos = calls.map((c) => (c.params as { repo?: string }).repo);
