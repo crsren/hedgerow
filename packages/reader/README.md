@@ -61,8 +61,8 @@ interface CreateReaderOptions {
 
 interface Reader {
   restore(): Promise<ReaderSession | null>;
-  signIn(handle: string): Promise<never>;      // redirects; never resolves on success
-  signUp(service?: string): Promise<never>;    // prompt: "create"; default service https://bsky.social
+  signIn(handle: string, opts?: { state?: string }): Promise<never>;    // redirects; never resolves on success
+  signUp(service?: string, opts?: { state?: string }): Promise<never>;  // prompt: "create"; default service https://bsky.social
   signOut(): Promise<void>;
   getProfile(): Promise<ReaderProfile | null>;  // did, handle, displayName, avatar — always hits the network
   createReply(input: CreateReplyInput): Promise<StrongRef>;
@@ -70,6 +70,7 @@ interface Reader {
   like(subject: StrongRef): Promise<StrongRef>;     // app.bsky.feed.like; deduped against findLike first
   unlike(likeUri: string): Promise<void>;
   findLike(subjectUri: string): Promise<string | null>;  // "did I like this?" — see the bound below
+  takeCallbackState(): string | null;  // one-shot; see "Resuming intent after the redirect" below
 }
 
 interface ReaderSession { did: string; handle: string; displayName?: string }
@@ -136,6 +137,26 @@ Every authorize call (`signIn()`/`signUp()`) explicitly requests `scope: "atprot
 Both `signIn()` and `signUp()` land on a consent screen every time, on the reader's own authorization server — this is enforced server-side, not a choice `@hedgerow/reader` makes. `@atproto/oauth-provider` forces consent for any client whose `token_endpoint_auth_method` is `"none"` (a public browser SPA is exactly that) and rejects a silent (`prompt: "none"`) authorization request outright. `signUp()`'s `prompt: "create"` is the one value the provider exempts from that forced-consent gate — it's what lets a *new* account land back authorized without an extra approval step, not a way to skip consent for an *existing* one.
 
 The only silent path here is `restore()` resuming a session already cached in this origin's IndexedDB. There is no silent sign-in across a fresh login, and no cross-site session sharing — word your UI accordingly ("you'll approve access on your Bluesky server"), not as an "instant" login.
+
+## Resuming intent after the redirect
+
+`signIn()`/`signUp()` navigate the whole page away to the reader's authorization server and back — anything held in memory (which reply box was open, what the reader had typed, which post they were replying to) is gone by the time `restore()` runs on the reloaded page. `opts.state` on `signIn`/`signUp`, paired with `Reader.takeCallbackState()`, is how you carry a small piece of that intent through the round trip: it's passed straight through to the OAuth `state` parameter, which the authorization server round-trips verbatim and hands back on the callback.
+
+```ts
+// Before redirecting — stash an id for whatever the reader was doing.
+await reader.signIn(handle, { state: replyBoxId });
+
+// After the redirect, once per page load:
+const session = await reader.restore();
+const replyBoxId = reader.takeCallbackState(); // the id, or null
+if (replyBoxId) {
+  // scroll back to / re-open that specific reply box, now signed in
+}
+```
+
+`takeCallbackState()` is **one-shot**: it returns the stashed value the first time it's called after a `restore()` that completed a fresh OAuth callback, then resets to `null` — a second call, or any call after a `restore()` that instead resumed a session from cache (no redirect involved), returns `null`. There is no separate "was this a fresh callback?" boolean: the presence of a non-null state *is* that signal. If you only need the boolean and have no payload to carry, pass any non-empty string as `state` and treat a non-null `takeCallbackState()` return as "yes, this restore just completed a callback."
+
+Keep whatever you put in `state` small and non-sensitive — it round-trips through the authorization server and the URL, not a private channel. An opaque id you use to look up local state (like `replyBoxId` above) is the intended shape, not the state itself.
 
 ## Handle resolver
 

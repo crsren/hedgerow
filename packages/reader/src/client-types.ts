@@ -29,12 +29,21 @@ export interface OAuthClientLike {
    * Restores the last-used session, or — when the current URL carries an
    * OAuth callback — completes that login instead. Must be called exactly
    * once per client instance (the underlying library's contract).
+   *
+   * `state` distinguishes the two outcomes: it is present (a `string | null`
+   * — `null` when the original `signIn`/`signUp` call passed no `state`
+   * option) when this call just completed a fresh OAuth callback, and absent
+   * when an existing session was resumed from cache with no callback
+   * involved. This mirrors `BrowserOAuthClient.init()`'s own return type
+   * exactly (`{ session; state?: never } | { session; state: string | null }
+   * | undefined`) — see `Reader.takeCallbackState()` for how `createReader`
+   * surfaces this to callers.
    */
-  init(): Promise<{ session: OAuthSessionLike } | undefined>;
+  init(): Promise<{ session: OAuthSessionLike; state?: string | null } | undefined>;
   /** Redirects the browser; the returned promise only ever rejects (abort). */
   signIn(
     input: string,
-    options?: { scope?: string; prompt?: OAuthPrompt; signal?: AbortSignal },
+    options?: { scope?: string; prompt?: OAuthPrompt; state?: string; signal?: AbortSignal },
   ): Promise<OAuthSessionLike>;
 }
 

@@ -70,17 +70,24 @@ export interface Reader {
    * rejects silent (`prompt: "none"`) authorization for one. There is no
    * silent cross-site or cross-visit sign-in; the only silent path is
    * {@link Reader.restore} resuming an existing per-origin session.
+   *
+   * `opts.state` is passed straight through to the underlying OAuth
+   * `state` param, round-tripped verbatim by the authorization server and
+   * handed back on {@link Reader.restore} — see
+   * {@link Reader.takeCallbackState} and the package README's "Resuming
+   * intent after the redirect" section for the stash-an-id-in-state pattern
+   * this exists for (e.g. "which reply box was the reader signing in from").
    */
-  signIn(handle: string): Promise<never>;
+  signIn(handle: string, opts?: { state?: string }): Promise<never>;
   /**
    * Start the OAuth **signup** flow (`prompt: "create"`) at `service` (default
    * `https://bsky.social`) and redirect the browser there. The reader creates
    * their Bluesky account on the authorization server mid-flow and lands back
    * already authorized — no separate "go create an account, then come back
    * and log in" round trip. Same redirect/never-resolves contract as
-   * {@link Reader.signIn}.
+   * {@link Reader.signIn}, including `opts.state`.
    */
-  signUp(service?: string): Promise<never>;
+  signUp(service?: string, opts?: { state?: string }): Promise<never>;
   /** Sign out and clear the local session. A no-op when already signed out. */
   signOut(): Promise<void>;
   /**
@@ -143,4 +150,21 @@ export interface Reader {
    * after the first are free.
    */
   findLike(subjectUri: string): Promise<string | null>;
+  /**
+   * One-shot: returns the `state` string a caller passed to {@link
+   * Reader.signIn}/{@link Reader.signUp} IF the most recent {@link
+   * Reader.restore} call just completed that OAuth redirect — then resets to
+   * `null`, so a second call (or a call after a cached-session restore, which
+   * never carries a callback state at all) always returns `null`. Call it
+   * once, right after `await reader.restore()`, to recover intent that
+   * doesn't survive the redirect round trip (e.g. "which reply box was open"
+   * — see the package README's "Resuming intent after the redirect"
+   * section).
+   *
+   * There is deliberately no separate "was this a fresh callback?" boolean:
+   * state presence *is* that signal. A caller who only needs the boolean and
+   * doesn't otherwise need a payload can pass any non-empty string as
+   * `state` at sign-in time and treat a non-null return as "yes".
+   */
+  takeCallbackState(): string | null;
 }

@@ -82,6 +82,71 @@ describe("resolveHandle caching", () => {
     await resolveHandle("bsky.app", { fetchImpl: stub.fetch, cacheTtlMs: 0 });
     expect(stub.calls).toHaveLength(2);
   });
+
+  it("dedupes a concurrent burst for the same handle into one fetch", async () => {
+    const stub = resolveStub();
+    const results = await Promise.all([
+      resolveHandle("bsky.app", { fetchImpl: stub.fetch }),
+      resolveHandle("bsky.app", { fetchImpl: stub.fetch }),
+      resolveHandle("BSKY.APP", { fetchImpl: stub.fetch }), // case-insensitive, same in-flight entry
+    ]);
+    expect(results).toEqual([DID, DID, DID]);
+    expect(stub.calls).toHaveLength(1);
+  });
+
+  it("still dedupes a concurrent burst when cacheTtlMs is 0 (in-flight sharing is independent of the settled cache)", async () => {
+    const stub = resolveStub();
+    const results = await Promise.all([
+      resolveHandle("bsky.app", { fetchImpl: stub.fetch, cacheTtlMs: 0 }),
+      resolveHandle("bsky.app", { fetchImpl: stub.fetch, cacheTtlMs: 0 }),
+    ]);
+    expect(results).toEqual([DID, DID]);
+    expect(stub.calls).toHaveLength(1); // shared in-flight promise, even though nothing gets cached after
+
+    // But once settled, cacheTtlMs: 0 means the NEXT call re-fetches rather
+    // than reusing a settled cache entry.
+    await resolveHandle("bsky.app", { fetchImpl: stub.fetch, cacheTtlMs: 0 });
+    expect(stub.calls).toHaveLength(2);
+  });
+
+  it("does not cache a rejection — a later call retries the fetch", async () => {
+    let calls = 0;
+    const stub = stubFetch(() => {
+      calls++;
+      throw new Error("network down");
+    });
+
+    await expect(resolveHandle("bsky.app", { fetchImpl: stub.fetch })).rejects.toBeInstanceOf(
+      HedgerowFetchError,
+    );
+    expect(calls).toBe(1);
+
+    // Retried after the rejection — not stuck behind a dead in-flight entry,
+    // and not treated as a cached failure.
+    const resolveOk = resolveStub();
+    const did = await resolveHandle("bsky.app", { fetchImpl: resolveOk.fetch });
+    expect(did).toBe(DID);
+    expect(resolveOk.calls).toHaveLength(1);
+  });
+
+  it("a burst racing a rejection all reject, and a subsequent call still retries", async () => {
+    let calls = 0;
+    const stub = stubFetch(() => {
+      calls++;
+      throw new Error("network down");
+    });
+
+    const results = await Promise.allSettled([
+      resolveHandle("bsky.app", { fetchImpl: stub.fetch }),
+      resolveHandle("bsky.app", { fetchImpl: stub.fetch }),
+    ]);
+    expect(results.every((r) => r.status === "rejected")).toBe(true);
+    expect(calls).toBe(1); // the burst still shared ONE in-flight request, which then rejected for everyone
+
+    const resolveOk = resolveStub();
+    expect(await resolveHandle("bsky.app", { fetchImpl: resolveOk.fetch })).toBe(DID);
+    expect(resolveOk.calls).toHaveLength(1);
+  });
 });
 
 describe("atUriToBskyUrl", () => {

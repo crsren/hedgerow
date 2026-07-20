@@ -149,13 +149,25 @@ export function createReader(options: CreateReaderOptions = {}): Reader {
   // instead of re-running it.
   let restorePromise: Promise<ReaderSession | null> | null = null;
 
+  // The `state` string handed back by the underlying client's init() when
+  // the most recent restore() just completed a fresh OAuth callback — null
+  // both before any restore() and when a session was instead resumed from
+  // cache (no callback involved). One-shot: takeCallbackState() clears it on
+  // read so a second call, or any call once the moment has passed, reads
+  // null rather than replaying stale intent.
+  let callbackState: string | null = null;
+
   // Shared by signIn/signUp: kick off an authorize redirect and never return
   // normally. The authorization server for this kind of client (a public
   // browser app) always shows a consent screen — it doesn't accept a silent
   // (`prompt: "none"`) request — so there's no silent variant to offer here.
-  async function redirect(input: string, prompt?: OAuthPrompt): Promise<never> {
+  async function redirect(input: string, prompt?: OAuthPrompt, state?: string): Promise<never> {
     const client = await getClient();
-    await client.signIn(input, { scope: ATPROTO_SCOPE, ...(prompt ? { prompt } : {}) });
+    await client.signIn(input, {
+      scope: ATPROTO_SCOPE,
+      ...(prompt ? { prompt } : {}),
+      ...(state !== undefined ? { state } : {}),
+    });
     throw new Error(`createReader: signIn() resolved without redirecting (input: ${input})`);
   }
 
@@ -165,6 +177,12 @@ export function createReader(options: CreateReaderOptions = {}): Reader {
         const client = await getClient();
         const result = await client.init();
         if (!result) return null;
+        // Present (even as "") only when this call completed a fresh OAuth
+        // callback; `??` (not `||`) so an empty-string state is preserved
+        // rather than collapsed to null — see takeCallbackState()'s doc
+        // comment for why state-presence, not a separate boolean, is the
+        // "was this a callback" signal.
+        callbackState = result.state ?? null;
         const builtAgent = setSession(result.session)!;
         // The session itself is already good here (a real OAuth token) —
         // don't let a failed profile fetch (a separate, transient AppView
@@ -180,15 +198,15 @@ export function createReader(options: CreateReaderOptions = {}): Reader {
       })());
     },
 
-    signIn(handle: string): Promise<never> {
-      return redirect(handle);
+    signIn(handle: string, opts?: { state?: string }): Promise<never> {
+      return redirect(handle, undefined, opts?.state);
     },
 
-    signUp(service: string = DEFAULT_SIGNUP_SERVICE): Promise<never> {
+    signUp(service: string = DEFAULT_SIGNUP_SERVICE, opts?: { state?: string }): Promise<never> {
       // prompt: "create" is the one prompt value the provider's forced-consent
       // gate exempts for a public client — the reader creates their account on
       // `service` mid-flow and lands back already authorized.
-      return redirect(service, "create");
+      return redirect(service, "create", opts?.state);
     },
 
     async signOut(): Promise<void> {
@@ -281,6 +299,12 @@ export function createReader(options: CreateReaderOptions = {}): Reader {
     async findLike(subjectUri: string): Promise<string | null> {
       const ref = await findLikeRef(subjectUri);
       return ref?.uri ?? null;
+    },
+
+    takeCallbackState(): string | null {
+      const state = callbackState;
+      callbackState = null;
+      return state;
     },
   };
 }

@@ -115,6 +115,18 @@ function clientWithoutSession() {
   return { client: { init, signIn } as OAuthClientLike, init, signIn };
 }
 
+/**
+ * A client whose init() resolves as if the page just landed back from a
+ * fresh OAuth callback — `state` is present (mirroring
+ * `BrowserOAuthClient.init()`'s real return shape: `state` only appears at
+ * all on the callback branch, never on a plain cache restore).
+ */
+function clientWithCallbackState(session: OAuthSessionLike, state: string | null) {
+  const init = vi.fn(async () => ({ session, state }));
+  const signIn = vi.fn(async (): Promise<OAuthSessionLike> => session);
+  return { client: { init, signIn } as OAuthClientLike, init, signIn };
+}
+
 describe("createReader — restore", () => {
   it("returns null when there is no session to resume", async () => {
     const { client } = clientWithoutSession();
@@ -198,6 +210,19 @@ describe("createReader — signIn", () => {
 
     await expect(reader.signIn("chris.bsky.social")).rejects.toBe(abortError);
   });
+
+  it("passes opts.state through to the underlying client.signIn", async () => {
+    const { client, signIn } = clientWithoutSession();
+    const reader = createReader({ createClient: () => client });
+
+    await expect(reader.signIn("chris.bsky.social", { state: "reply-box-42" })).rejects.toThrow(
+      /resolved without redirecting/,
+    );
+    expect(signIn).toHaveBeenCalledWith("chris.bsky.social", {
+      scope: "atproto transition:generic",
+      state: "reply-box-42",
+    });
+  });
 });
 
 describe("createReader — signUp", () => {
@@ -234,6 +259,20 @@ describe("createReader — signUp", () => {
     const reader = createReader({ createClient: () => client });
 
     await expect(reader.signUp()).rejects.toBe(abortError);
+  });
+
+  it("passes opts.state through to the underlying client.signIn", async () => {
+    const { client, signIn } = clientWithoutSession();
+    const reader = createReader({ createClient: () => client });
+
+    await expect(reader.signUp(undefined, { state: "reply-box-42" })).rejects.toThrow(
+      /resolved without redirecting/,
+    );
+    expect(signIn).toHaveBeenCalledWith("https://bsky.social", {
+      scope: "atproto transition:generic",
+      prompt: "create",
+      state: "reply-box-42",
+    });
   });
 });
 
@@ -615,5 +654,62 @@ describe("createReader — findLike", () => {
     // longer exists).
     expect(await reader.findLike(SUBJECT.uri)).toBeNull();
     expect(listOwnRecords).not.toHaveBeenCalled(); // no agent to even ask
+  });
+});
+
+describe("createReader — takeCallbackState", () => {
+  it("returns null before any restore() call", async () => {
+    const { client } = clientWithoutSession();
+    const reader = createReader({ createClient: () => client });
+
+    expect(reader.takeCallbackState()).toBeNull();
+  });
+
+  it("returns the state once, then null, after a restore() that completed a fresh OAuth callback", async () => {
+    const session = fakeSession();
+    const { client } = clientWithCallbackState(session, "reply-box-42");
+    const { agent } = fakeAgent();
+    const reader = createReader({ createClient: () => client, createAgent: () => agent });
+
+    await reader.restore();
+
+    expect(reader.takeCallbackState()).toBe("reply-box-42");
+    expect(reader.takeCallbackState()).toBeNull(); // one-shot: cleared after the first read
+  });
+
+  it("returns null after a restore() that resumed a cached session (no callback involved)", async () => {
+    const session = fakeSession();
+    const { client } = clientWithSession(session); // init() resolves { session } — no `state` key at all
+    const { agent } = fakeAgent();
+    const reader = createReader({ createClient: () => client, createAgent: () => agent });
+
+    await reader.restore();
+
+    expect(reader.takeCallbackState()).toBeNull();
+  });
+
+  it("returns null when the callback completed but the original signIn/signUp call passed no state", async () => {
+    // Mirrors BrowserOAuthClient.init()'s real return shape: on the callback
+    // branch `state` is always present, but its value is `null` when the
+    // caller didn't pass a `state` option to signIn/signUp originally.
+    const session = fakeSession();
+    const { client } = clientWithCallbackState(session, null);
+    const { agent } = fakeAgent();
+    const reader = createReader({ createClient: () => client, createAgent: () => agent });
+
+    await reader.restore();
+
+    expect(reader.takeCallbackState()).toBeNull();
+  });
+
+  it("preserves an empty-string state rather than collapsing it to null", async () => {
+    const session = fakeSession();
+    const { client } = clientWithCallbackState(session, "");
+    const { agent } = fakeAgent();
+    const reader = createReader({ createClient: () => client, createAgent: () => agent });
+
+    await reader.restore();
+
+    expect(reader.takeCallbackState()).toBe("");
   });
 });

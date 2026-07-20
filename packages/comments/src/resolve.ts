@@ -23,29 +23,59 @@ const DEFAULT_CACHE_TTL_MS = 5 * 60_000;
 // clock here since entries are short-lived and identity-stable.
 const handleCache = new Map<string, { did: string; expires: number }>();
 
+// In-flight resolveHandle calls, keyed the same way as handleCache (handle
+// only — not by appView/fetchImpl, matching the settled cache's existing
+// keying). A burst of concurrent callers for the same handle — e.g. a thread
+// with several stub authors all needing the same resolveHandle() — would
+// otherwise fire one identical XRPC request per caller; sharing the promise
+// collapses that to one.
+//
+// `cacheTtlMs: 0` disables the SETTLED cache (never memoize a finished
+// result) but does not disable in-flight sharing: two callers racing within
+// the same tick still share one request, since there is nothing to "cache"
+// yet, only a promise not yet resolved. This is a deliberate, narrower
+// reading of `cacheTtlMs: 0` than "never share work" — see the
+// `resolveHandle caching` tests for both halves of that contract.
+const pendingLookups = new Map<string, Promise<string>>();
+
 /** Clear the handle→DID cache. Exposed mainly for tests. */
 export function clearHandleCache(): void {
   handleCache.clear();
+  pendingLookups.clear();
 }
 
 /** Resolve a handle to a DID via com.atproto.identity.resolveHandle, memoized. */
-export async function resolveHandle(handle: string, opts: ResolveOpts = {}): Promise<string> {
+export function resolveHandle(handle: string, opts: ResolveOpts = {}): Promise<string> {
   const key = handle.toLowerCase();
   const ttl = opts.cacheTtlMs ?? DEFAULT_CACHE_TTL_MS;
   const now = Date.now();
 
   const hit = handleCache.get(key);
-  if (hit && hit.expires > now) return hit.did;
+  if (hit && hit.expires > now) return Promise.resolve(hit.did);
 
-  const { did } = await xrpcGet<{ did: string }>(
+  const pending = pendingLookups.get(key);
+  if (pending) return pending;
+
+  const promise = xrpcGet<{ did: string }>(
     opts.appView ?? DEFAULT_APPVIEW,
     "com.atproto.identity.resolveHandle",
     { handle },
     opts.fetchImpl,
-  );
+  )
+    .then(({ did }) => {
+      if (ttl > 0) handleCache.set(key, { did, expires: now + ttl });
+      return did;
+    })
+    .finally(() => {
+      // Drop on both success and rejection: a rejected lookup must not
+      // wedge later retries behind a dead promise, and a resolved one is
+      // already captured in handleCache (when ttl > 0) — the settled cache,
+      // not this map, is what serves subsequent calls from here on.
+      pendingLookups.delete(key);
+    });
 
-  if (ttl > 0) handleCache.set(key, { did, expires: now + ttl });
-  return did;
+  pendingLookups.set(key, promise);
+  return promise;
 }
 
 /** Parsed pieces of a post reference. */
