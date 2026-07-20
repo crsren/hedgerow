@@ -2,7 +2,7 @@
 // the part it must live under — so a misplaced `<Comments.Author>` fails loud
 // with a useful message instead of a cryptic null read.
 import { createContext, useContext, type ReactNode } from "react";
-import type { CommentNode } from "@hedgerow/comments";
+import type { Comment, CommentNode } from "@hedgerow/comments";
 import type { UseCommentsReturn } from "./useComments";
 import type { UseLikesReturn } from "./useLikes";
 import type { Like } from "@hedgerow/comments";
@@ -10,9 +10,29 @@ import type { UseReplyReturn } from "./useReply";
 
 // ── Comments ─────────────────────────────────────────────────────────────────
 
-export const CommentsRootContext = createContext<UseCommentsReturn | null>(null);
+/** Discriminant for `Comments.Root`'s `onCommentAction` — see comments.tsx's `LikeButton`/`ReplyButton`. */
+export type CommentAction = "like" | "unlike" | "reply";
 
-export function useCommentsContext(): UseCommentsReturn {
+/**
+ * `useComments`'s return, plus the two purely-UI callback props `Comments.Root`
+ * takes to wire per-comment like/reply triggers — kept OUT of `useComments`
+ * itself (which stays a pure fetch/sort/optimistic-merge engine) since these
+ * are just passed straight through from props to context for
+ * `Comments.LikeButton`/`Comments.ReplyButton` to read. Both are optional and
+ * `undefined` disables the parts that need them — same "injected, not
+ * imported" contract `Reply.Root`'s `session`/`onSubmit` use, so `@hedgerow/react`
+ * still never imports `@hedgerow/reader` or any other auth library.
+ */
+export interface CommentsContextValue extends UseCommentsReturn {
+  /** Handle a like/unlike/reply trigger from `Comments.LikeButton`/`Comments.ReplyButton`. */
+  onCommentAction?: (action: CommentAction, node: Comment) => void | Promise<void>;
+  /** Whether the reader has already liked `node`. `undefined` = unknown (e.g. a findLike lookup still resolving). */
+  isCommentLiked?: (node: Comment) => boolean | undefined;
+}
+
+export const CommentsRootContext = createContext<CommentsContextValue | null>(null);
+
+export function useCommentsContext(): CommentsContextValue {
   const ctx = useContext(CommentsRootContext);
   if (!ctx) throw new Error("This part must be rendered inside <Comments.Root>.");
   return ctx;

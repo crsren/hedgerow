@@ -46,8 +46,35 @@ export interface ProfileView {
   avatar?: string;
 }
 
+/** One record returned by `com.atproto.repo.listRecords` (subset). */
+export interface RecordListItem {
+  uri: string;
+  cid: string;
+  value: Record<string, unknown>;
+}
+
+/** Params for {@link AgentLike.listOwnRecords} — `repo` is implicit (the signed-in reader's own). */
+export interface ListOwnRecordsParams {
+  collection: string;
+  limit?: number;
+  cursor?: string;
+  /** Newest-first when true — what {@link AgentLike.listOwnRecords} callers want for bounded "most recent N" scans. */
+  reverse?: boolean;
+}
+
+export interface ListOwnRecordsResult {
+  records: RecordListItem[];
+  cursor?: string;
+}
+
 /** The bit of `@atproto/api`'s `Agent` we use. */
 export interface AgentLike {
   getProfile(params: { actor: string }): Promise<{ data: ProfileView }>;
   post(record: Record<string, unknown>): Promise<{ uri: string; cid: string }>;
+  /** `app.bsky.feed.like` create — writes to the signed-in reader's own repo. */
+  like(uri: string, cid: string): Promise<{ uri: string; cid: string }>;
+  /** Delete a like record by its own uri (rkey embedded). */
+  deleteLike(likeUri: string): Promise<void>;
+  /** Page `com.atproto.repo.listRecords` against the signed-in reader's own repo. */
+  listOwnRecords(params: ListOwnRecordsParams): Promise<ListOwnRecordsResult>;
 }

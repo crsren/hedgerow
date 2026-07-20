@@ -16,6 +16,13 @@ const DEFAULT_SIGNUP_SERVICE = "https://bsky.social";
  * registered for would be rejected server-side. */
 const ATPROTO_SCOPE = "atproto transition:generic";
 
+const LIKE_COLLECTION = "app.bsky.feed.like";
+/** Actors per listRecords page (the endpoint's own max). */
+const LIKE_PAGE_SIZE = 100;
+/** Page cap for findLike's search — see the Reader.findLike doc comment for
+ * exactly what this bounds and why it's an acceptable trade-off. */
+const LIKE_MAX_PAGES = 10;
+
 export interface CreateReaderOptions {
   /** Hosted `client-metadata.json` URL for a real deployment. Omit for loopback dev. */
   clientId?: string;
@@ -57,10 +64,61 @@ export function createReader(options: CreateReaderOptions = {}): Reader {
   let session: OAuthSessionLike | null = null;
   let agent: AgentLike | null = null;
 
+  // findLike()/like() results, cached per session — see Reader.findLike's doc
+  // comment. Keyed both directions so unlike(likeUri) (which doesn't know the
+  // subject) can still invalidate the right entry.
+  let likeBySubject = new Map<string, StrongRef | null>();
+  let subjectByLikeUri = new Map<string, string>();
+  // In-flight findLike lookups, deduped by subject uri — a comment thread can
+  // mount several like buttons for the same subject (e.g. a rerender racing a
+  // click) before the first lookup resolves; without this each would page the
+  // whole listRecords search independently.
+  let pendingLookups = new Map<string, Promise<StrongRef | null>>();
+
   function setSession(next: OAuthSessionLike | null): AgentLike | null {
     session = next;
     agent = next ? buildAgent(next) : null;
+    likeBySubject = new Map();
+    subjectByLikeUri = new Map();
+    pendingLookups = new Map();
     return agent;
+  }
+
+  /** Page the reader's own app.bsky.feed.like collection for `subjectUri`, newest first. Bounded — see Reader.findLike. */
+  async function searchOwnLikes(subjectUri: string): Promise<StrongRef | null> {
+    let cursor: string | undefined;
+    for (let page = 0; page < LIKE_MAX_PAGES; page++) {
+      const { records, cursor: next } = await agent!.listOwnRecords({
+        collection: LIKE_COLLECTION,
+        limit: LIKE_PAGE_SIZE,
+        reverse: true,
+        ...(cursor !== undefined ? { cursor } : {}),
+      });
+      for (const record of records) {
+        const subject = (record.value as { subject?: { uri?: string } }).subject;
+        if (subject?.uri === subjectUri) return { uri: record.uri, cid: record.cid };
+      }
+      if (!next || records.length === 0) return null;
+      cursor = next;
+    }
+    return null;
+  }
+
+  /** findLike's engine — resolves the full {@link StrongRef}, not just the uri, so `like()` can reuse it without a second fetch. */
+  function findLikeRef(subjectUri: string): Promise<StrongRef | null> {
+    if (likeBySubject.has(subjectUri)) return Promise.resolve(likeBySubject.get(subjectUri)!);
+    if (!agent) return Promise.resolve(null);
+
+    const pending =
+      pendingLookups.get(subjectUri) ??
+      searchOwnLikes(subjectUri).finally(() => pendingLookups.delete(subjectUri));
+    pendingLookups.set(subjectUri, pending);
+
+    return pending.then((found) => {
+      likeBySubject.set(subjectUri, found);
+      if (found) subjectByLikeUri.set(found.uri, subjectUri);
+      return found;
+    });
   }
 
   // client.init() may only run once per client instance (restoring a session
@@ -129,6 +187,36 @@ export function createReader(options: CreateReaderOptions = {}): Reader {
         createdAt: new Date().toISOString(),
       });
       return { uri, cid };
+    },
+
+    async like(subject: StrongRef): Promise<StrongRef> {
+      if (!agent) throw new Error("createReader: like() called while signed out");
+      // Check first — see the Reader.findLike doc comment for the bound this
+      // dedup is subject to and why the residual risk of a duplicate is
+      // accepted rather than engineered away entirely.
+      const existing = await findLikeRef(subject.uri);
+      if (existing) return existing;
+
+      const { uri, cid } = await agent.like(subject.uri, subject.cid);
+      const ref = { uri, cid };
+      likeBySubject.set(subject.uri, ref);
+      subjectByLikeUri.set(uri, subject.uri);
+      return ref;
+    },
+
+    async unlike(likeUri: string): Promise<void> {
+      if (!agent) throw new Error("createReader: unlike() called while signed out");
+      await agent.deleteLike(likeUri);
+      const subjectUri = subjectByLikeUri.get(likeUri);
+      if (subjectUri) {
+        likeBySubject.set(subjectUri, null);
+        subjectByLikeUri.delete(likeUri);
+      }
+    },
+
+    async findLike(subjectUri: string): Promise<string | null> {
+      const ref = await findLikeRef(subjectUri);
+      return ref?.uri ?? null;
     },
   };
 }

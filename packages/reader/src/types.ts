@@ -71,4 +71,43 @@ export interface Reader {
    * PDS. Throws when there is no active session.
    */
   createReply(input: CreateReplyInput): Promise<StrongRef>;
+  /**
+   * Like `subject` (an `app.bsky.feed.like` record) on the reader's own PDS.
+   * If an existing like for this exact subject is already known (via a prior
+   * {@link Reader.findLike} or {@link Reader.like} call this session), that
+   * like's ref is returned instead of writing a duplicate — see
+   * {@link Reader.findLike}'s doc comment for the bound this dedup is subject
+   * to. Throws when there is no active session.
+   */
+  like(subject: StrongRef): Promise<StrongRef>;
+  /**
+   * Delete a like record by its own uri (as returned by {@link Reader.like} or
+   * {@link Reader.findLike}). Throws when there is no active session.
+   */
+  unlike(likeUri: string): Promise<void>;
+  /**
+   * Find the reader's own like of `subjectUri`, if any, by paging
+   * `com.atproto.repo.listRecords` over the reader's `app.bsky.feed.like`
+   * collection, newest first. There is no authenticated AppView to ask "did I
+   * like this" directly, so this is the only way to know.
+   *
+   * **Bounded, honestly**: this pages at most ~10 pages (~1000 like records)
+   * before giving up. A reader who has liked more than ~1000 things *more
+   * recently* than the post in question will still be found (newest-first);
+   * one who liked THIS post a very long time ago, under a mountain of more
+   * recent likes, may not be — the button will then show "not liked" even
+   * though a like technically exists. Liking again in that state is harmless
+   * on Bluesky's side (two like records for the same subject just both count
+   * toward the post's likeCount oddly) but does create a duplicate record.
+   * {@link Reader.like} mitigates this by calling findLike first, so the
+   * residual failure mode is narrow: a genuine double-like only happens to a
+   * reader who (a) has this pathological like history AND (b) actually clicks
+   * like on a post they secretly already liked ages ago. Accepted as-is for
+   * v1 — see docs/architecture.md.
+   *
+   * Results are cached in memory for the lifetime of this `Reader` instance
+   * (cleared on sign-in/sign-out), so repeated calls for the same subject
+   * after the first are free.
+   */
+  findLike(subjectUri: string): Promise<string | null>;
 }

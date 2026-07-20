@@ -17,9 +17,12 @@ import {
   useCommentsContext,
   useCommentItemContext,
   useOptionalCommentItem,
+  type CommentAction,
   type CommentItemContextValue,
+  type CommentsContextValue,
 } from "./context";
-import { useComments, type UseCommentsOptions, type UseCommentsReturn } from "./useComments";
+import { useComments, type DeliveryState, type UseCommentsOptions, type UseCommentsReturn } from "./useComments";
+import { useLikeButton } from "./useLikeButton";
 
 // `PartProps` now lives in ./render (shared infra, not comments-specific) —
 // re-exported here so existing imports of it from "./comments" keep working.
@@ -42,6 +45,16 @@ export interface CommentsRootProps
     Omit<React.ComponentPropsWithoutRef<"div">, "className" | "style" | "children"> {
   /** Initial reply order (uncontrolled). */
   sort?: SortOrder;
+  /**
+   * Handle a like/unlike/reply trigger from `Comments.LikeButton`/
+   * `Comments.ReplyButton` on any item in the tree. Omit to leave those parts
+   * disabled (like) or unrendered (reply) — this package never imports
+   * `@hedgerow/reader` or any auth library, so the app supplies the actual
+   * write (and, for "reply", whatever retargets its own composer).
+   */
+  onCommentAction?: (action: CommentAction, node: Comment) => void | Promise<void>;
+  /** Report whether the reader has already liked `node` — drives `Comments.LikeButton`'s toggle state. `undefined` = unknown. */
+  isCommentLiked?: (node: Comment) => boolean | undefined;
 }
 
 /**
@@ -50,7 +63,24 @@ export interface CommentsRootProps
  * `data-status` / `data-loading` / `data-error` / `data-empty`.
  */
 export const Root = React.forwardRef<HTMLDivElement, CommentsRootProps>(function CommentsRoot(
-  { post, sort, maxDepth, filter, initialData, appView, fetchImpl, cacheTtlMs, render, className, style, children, ...rest },
+  {
+    post,
+    sort,
+    maxDepth,
+    filter,
+    initialData,
+    appView,
+    fetchImpl,
+    cacheTtlMs,
+    optimisticGiveUpAfter,
+    onCommentAction,
+    isCommentLiked,
+    render,
+    className,
+    style,
+    children,
+    ...rest
+  },
   ref,
 ) {
   const value = useComments({
@@ -62,6 +92,7 @@ export const Root = React.forwardRef<HTMLDivElement, CommentsRootProps>(function
     ...(appView !== undefined ? { appView } : {}),
     ...(fetchImpl !== undefined ? { fetchImpl } : {}),
     ...(cacheTtlMs !== undefined ? { cacheTtlMs } : {}),
+    ...(optimisticGiveUpAfter !== undefined ? { optimisticGiveUpAfter } : {}),
   });
 
   const state: CommentsRootState = {
@@ -92,7 +123,8 @@ export const Root = React.forwardRef<HTMLDivElement, CommentsRootProps>(function
     },
   });
 
-  return <CommentsRootContext.Provider value={value}>{element}</CommentsRootContext.Provider>;
+  const contextValue: CommentsContextValue = { ...value, onCommentAction, isCommentLiked };
+  return <CommentsRootContext.Provider value={contextValue}>{element}</CommentsRootContext.Provider>;
 });
 
 // ── List + recursion ─────────────────────────────────────────────────────────
@@ -154,6 +186,17 @@ export interface CommentItemState {
   isStub: boolean;
   hasReplies: boolean;
   labels: Label[];
+  /** "pending" | "confirmed" | "unconfirmed" for an optimistically-inserted reply; undefined for an ordinary fetched node. See `useComments`'s `DeliveryState`. */
+  deliveryState: DeliveryState | undefined;
+  /**
+   * True for exactly one frame after this row first mounts (a brand new
+   * optimistic insert, or a node appearing for the first time on a
+   * revalidate) — pairs with `data-entering` for a plain CSS entry
+   * transition: style `[data-entering]` as the "before" look, the resting
+   * style as the "after" one, and a `transition` does the rest once the
+   * attribute is removed next frame.
+   */
+  isEntering: boolean;
 }
 
 export type CommentItemProps = PartProps<CommentItemState, "div">;
@@ -161,16 +204,29 @@ export type CommentItemProps = PartProps<CommentItemState, "div">;
 /**
  * A single comment row (also the template `<Comments.List>`/`<Comments.Replies>`
  * repeat). Reflects `data-depth`, one of `data-comment`/`data-blocked`/
- * `data-not-found`, `data-labeled`, and `data-has-replies`.
+ * `data-not-found`, `data-labeled`, `data-has-replies`, `data-state`
+ * (optimistic delivery state), and `data-entering` (one-frame entry-transition
+ * hook — see `CommentItemState.isEntering`).
  */
 export const Item = React.forwardRef<HTMLDivElement, CommentItemProps>(function CommentItem(
   { render, className, style, children, ...rest },
   ref,
 ) {
   const { node, depth, index } = useCommentItemContext();
+  const { deliveryStateOf } = useCommentsContext();
   const isComment = node.type === "comment";
   const labels = isComment ? (node as Comment).labels : [];
   const hasReplies = isComment && (node as Comment).replies.length > 0;
+
+  // Entering is purely a function of THIS row's own mount — React keys each
+  // item by its uri (see keyOf below), so a node that's already been showing
+  // keeps the same component instance (this state stays false) while a truly
+  // new one (optimistic insert or first-seen-on-revalidate) mounts fresh.
+  const [isEntering, setIsEntering] = React.useState(true);
+  React.useEffect(() => {
+    const frame = requestAnimationFrame(() => setIsEntering(false));
+    return () => cancelAnimationFrame(frame);
+  }, []);
 
   const state: CommentItemState = {
     node,
@@ -181,6 +237,8 @@ export const Item = React.forwardRef<HTMLDivElement, CommentItemProps>(function 
     isStub: !isComment,
     hasReplies,
     labels,
+    deliveryState: deliveryStateOf(node.uri),
+    isEntering,
   };
 
   return renderElement("div", {
@@ -201,6 +259,8 @@ export const Item = React.forwardRef<HTMLDivElement, CommentItemProps>(function 
         "not-found": node.type === "notFound",
         labeled: labels.length > 0,
         "has-replies": hasReplies,
+        state: state.deliveryState,
+        entering: isEntering,
       }),
       children,
     },
@@ -384,6 +444,103 @@ export const Likes = React.forwardRef<HTMLSpanElement, CommentsLikesProps>(funct
     props: { ...rest, ...dataAttrs({ count: node.likeCount }), children: children ?? node.likeCount },
   });
 });
+
+export interface CommentsLikeButtonState {
+  node: Comment;
+  liked: boolean | undefined;
+  count: number;
+  isBusy: boolean;
+  isDisabled: boolean;
+}
+
+export type CommentsLikeButtonProps = PartProps<CommentsLikeButtonState, "button">;
+
+/**
+ * Like/unlike toggle for THIS comment (as opposed to `Likes.Button`, which is
+ * for the root post). Reads `node` from the enclosing `Comments.Item` and
+ * `onCommentAction`/`isCommentLiked` from `Comments.Root` — disabled
+ * whenever `onCommentAction` is omitted (e.g. no reader session), same
+ * "injected, never imported" auth contract as the rest of this package.
+ * Reflects `data-liked` / `data-busy` / `data-disabled`.
+ */
+export const LikeButton = React.forwardRef<HTMLButtonElement, CommentsLikeButtonProps>(
+  function CommentsLikeButton({ render, className, style, children, ...rest }, ref) {
+    const { node } = useCommentItemContext();
+    const { onCommentAction, isCommentLiked } = useCommentsContext();
+    const comment = node.type === "comment" ? node : undefined;
+
+    // Hooks run unconditionally (Rules of Hooks) — the "not a real comment"
+    // case is handled by returning null below, after every hook has run.
+    const value = useLikeButton({
+      liked: comment ? isCommentLiked?.(comment) : undefined,
+      count: comment?.likeCount ?? 0,
+      onLike: () => (comment ? onCommentAction?.("like", comment) : undefined),
+      onUnlike: () => (comment ? onCommentAction?.("unlike", comment) : undefined),
+      disabled: !onCommentAction || !comment,
+    });
+
+    if (!comment) return null;
+    const state: CommentsLikeButtonState = {
+      node: comment,
+      liked: value.liked,
+      count: value.count,
+      isBusy: value.isBusy,
+      isDisabled: value.isDisabled,
+    };
+    return renderElement("button", {
+      state,
+      render,
+      className,
+      style,
+      ref,
+      props: {
+        type: "button",
+        ...rest,
+        disabled: value.isDisabled,
+        "aria-pressed": value.liked === true,
+        onClick: () => void value.toggle(),
+        ...dataAttrs({ liked: value.liked === true, busy: value.isBusy, disabled: value.isDisabled }),
+        children: children ?? (value.liked ? `♥ ${value.count}` : `♡ ${value.count}`),
+      },
+    });
+  },
+);
+
+export interface CommentsReplyButtonState {
+  node: Comment;
+}
+
+export type CommentsReplyButtonProps = PartProps<CommentsReplyButtonState, "button">;
+
+/**
+ * "Reply to this comment" trigger — does NOT itself open a composer (reuse
+ * `Reply.*` for that, one instance, retargeted). Clicking it just calls
+ * `Comments.Root`'s `onCommentAction("reply", node)`, so the app can point its
+ * existing composer's `parent` at this comment's strongRef (`node.uri`/
+ * `node.cid`) while `root` stays the thread root. Renders nothing when
+ * `onCommentAction` is omitted — there'd be nothing for a click to do.
+ */
+export const ReplyButton = React.forwardRef<HTMLButtonElement, CommentsReplyButtonProps>(
+  function CommentsReplyButton({ render, className, style, children, ...rest }, ref) {
+    const { node } = useCommentItemContext();
+    const { onCommentAction } = useCommentsContext();
+    if (node.type !== "comment" || !onCommentAction) return null;
+    const state: CommentsReplyButtonState = { node };
+    return renderElement("button", {
+      state,
+      render,
+      className,
+      style,
+      ref,
+      props: {
+        type: "button",
+        ...rest,
+        onClick: () => void onCommentAction("reply", node),
+        children: children ?? "Reply",
+      },
+    });
+  },
+);
 
 export interface LabelsState {
   labels: Label[];

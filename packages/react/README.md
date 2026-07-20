@@ -95,10 +95,16 @@ Every attribute a part emits, derived from the components:
 | | `data-not-found` | present when the node is a deleted-reply stub |
 | | `data-labeled` | present when the comment carries moderation labels |
 | | `data-has-replies` | present when the comment has replies |
+| | `data-state` | `pending` \| `confirmed` \| `unconfirmed` for an optimistically-inserted reply (see [Optimistic replies](#optimistic-replies)); **absent** for an ordinarily-fetched node |
+| | `data-entering` | present for one frame after this row first mounts (a fresh optimistic insert, or a node appearing for the first time on revalidate) — a plain-CSS entry-transition hook, see below |
 | `Comments.Replies` | `data-depth` | nesting level of this reply group |
 | | `data-count` | number of replies |
 | `Comments.Author` | `data-handle` | the author's handle |
 | `Comments.Likes` | `data-count` | the comment's own like count |
+| `Comments.LikeButton` | `data-liked` | present when the reader has liked this comment |
+| | `data-busy` | present while the like/unlike write is in flight |
+| | `data-disabled` | present when disabled (`Comments.Root`'s `onCommentAction` is unset, or `isCommentLiked` hasn't resolved yet) |
+| `Comments.ReplyButton` | *(none — renders nothing when `Comments.Root`'s `onCommentAction` is unset)* | |
 | `Comments.Labels` | `data-count` | number of labels |
 | | `data-values` | space-joined label values |
 | `Comments.Fallback` | `data-kind` | `blocked` \| `notFound` |
@@ -115,6 +121,9 @@ Every attribute a part emits, derived from the components:
 | | `data-loading` / `data-error` / `data-empty` | as on `Comments.Root` |
 | | `data-total` | number of likes collected |
 | `Likes.Count` | `data-total` | number of likes collected |
+| `Likes.Button` | `data-liked` | present when `liked` is true |
+| | `data-busy` | present while the toggle is in flight |
+| | `data-disabled` | present when disabled (`liked` is still `undefined`, or `disabled` is set) |
 | `Likes.Avatars` | `data-count` | number of avatars rendered |
 | | `data-total` | number of likes collected |
 | `Likes.Avatar` | `data-handle` | the liker's handle |
@@ -168,15 +177,17 @@ Every part accepts the shared headless props — `className` (string or `(state)
 
 | Part | Default element | State | Notes |
 |------|-----------------|-------|-------|
-| `Comments.Root` | `div` | `{ status, isEmpty, count }` | Provider + container. Runs the fetch/state machine; every other part reads its context. Takes all `useComments` options as props (`post`, `sort`, `maxDepth`, `filter`, `initialData`, `appView`, `fetchImpl`, `cacheTtlMs`). |
+| `Comments.Root` | `div` | `{ status, isEmpty, count }` | Provider + container. Runs the fetch/state machine; every other part reads its context. Takes all `useComments` options as props (`post`, `sort`, `maxDepth`, `filter`, `initialData`, `appView`, `fetchImpl`, `cacheTtlMs`, `optimisticGiveUpAfter`), plus two auth-free UI callbacks: `onCommentAction?(action, node)` (drives `Comments.LikeButton`/`Comments.ReplyButton`, see below) and `isCommentLiked?(node)`. |
 | `Comments.List` | `div` (`role="list"`) | `{ count, isEmpty }` | Renders top-level comments. Its single child is the item template. |
-| `Comments.Item` | `div` (`role="listitem"`) | `{ node, depth, index, kind, isComment, isStub, hasReplies, labels }` | One comment row, and the template `List`/`Replies` repeat. |
+| `Comments.Item` | `div` (`role="listitem"`) | `{ node, depth, index, kind, isComment, isStub, hasReplies, labels, deliveryState, isEntering }` | One comment row, and the template `List`/`Replies` repeat. `deliveryState`/`isEntering` back `data-state`/`data-entering` — see [Optimistic replies](#optimistic-replies). |
 | `Comments.Replies` | `div` (`role="list"`) | `{ count, depth }` | Recursively renders the current comment's replies with the same item template. Renders nothing for stubs or childless comments. |
 | `Comments.Author` | `span` | `{ author, node }` | Defaults to `displayName`, falling back to `handle`. Renders nothing on a stub. |
 | `Comments.Avatar` | `img` | `{ author, node }` | The author's avatar, `alt`-labelled and lazy-loaded. Renders nothing when there's no avatar. |
 | `Comments.Content` | `div` | `{ text, node }` | The comment body text. |
 | `Comments.Timestamp` | `time` | `{ date, node }` | `<time>` with a machine-readable `dateTime`; label defaults to a locale date string. Extra prop: `format?: (date: Date) => string`. |
 | `Comments.Likes` | `span` | `{ count, node }` | The comment's *own* like count (not the `Likes.*` namespace). |
+| `Comments.LikeButton` | `button` | `{ node, liked, count, isBusy, isDisabled }` | Like/unlike toggle for this comment. Calls `Comments.Root`'s `onCommentAction("like" \| "unlike", node)`; disabled when that's unset. See [Per-comment interactions](#per-comment-interactions). |
+| `Comments.ReplyButton` | `button` | `{ node }` | Calls `Comments.Root`'s `onCommentAction("reply", node)` — does not open a composer itself (see [Per-comment interactions](#per-comment-interactions)). Renders nothing when `onCommentAction` is unset. |
 | `Comments.Labels` | `span` | `{ labels }` | Moderation labels on the comment (post + author, merged). Surfacing only — never a filter. Renders nothing when there are none. |
 | `Comments.Fallback` | `div` | `{ kind, node }` | Placeholder for a deleted (`notFound`) or `blocked` reply. Renders only for stubs. |
 | `Comments.Stats` | `div` | `{ likeCount, repostCount, replyCount, quoteCount, postUrl }` | Root-post engagement counts. Renders whatever children you give it. |
@@ -191,6 +202,7 @@ Every part accepts the shared headless props — `className` (string or `(state)
 |------|-----------------|-------|-------|
 | `Likes.Root` | `div` | `{ status, total, isEmpty }` | Provider + container for a post's likes. Takes all `useLikes` options as props (`post`, `pageSize`, `maxPages`, `initialData`, `appView`, `fetchImpl`, `cacheTtlMs`). |
 | `Likes.Count` | `span` | `{ total }` | The collected like total. See the note below on totals. |
+| `Likes.Button` | `button` | `{ liked, count, isBusy, isDisabled }` | Standalone like/unlike toggle for the post — no `Likes.Root` needed. Takes `liked`, `count`, `onLike`, `onUnlike`, `disabled?` as props (same "injected, not imported" contract as `Reply.Root`'s `session`/`onSubmit`). See [Liking the post](#liking-the-post). |
 | `Likes.Avatars` | `div` | `{ count, total }` | One entry per liker. With a child template it repeats it; with no children it renders a default `<img>` stack. Extra prop: `max?: number` to cap how many render. |
 | `Likes.Avatar` | `img` | `{ like, actor }` | A single liker's avatar, `alt`-labelled and lazy-loaded. Renders nothing when they have no avatar. |
 | `Likes.Loading` | `div` | `{}` | Renders only while fetching. |
@@ -258,6 +270,107 @@ function CustomField() {
 }
 ```
 
+### Liking the post
+
+`Likes.Button` follows the exact same "state and the write are both injected" idiom as `Reply.Root`: it never imports `@hedgerow/reader` or any auth library, so it's just as usable with a server-backed auth of your own. Wire it to [`@hedgerow/reader`](../reader)'s `like`/`unlike`/`findLike`:
+
+```tsx
+import { Comments, Likes, useCommentsContext } from "@hedgerow/react";
+import { createReader } from "@hedgerow/reader";
+import { useEffect, useState } from "react";
+
+const reader = createReader();
+
+function PostLikeButton() {
+  const { data, root, stats } = useCommentsContext(); // must render inside <Comments.Root>
+  const [likeUri, setLikeUri] = useState<string | null | undefined>(undefined); // undefined = unknown yet
+
+  useEffect(() => {
+    if (!data) return;
+    reader.findLike(data.uri).then(setLikeUri);
+  }, [data?.uri]);
+
+  if (!data || !root || root.type !== "comment") return null;
+  const subject = { uri: data.uri, cid: root.cid };
+
+  return (
+    <Likes.Button
+      liked={likeUri != null}
+      count={stats?.likeCount ?? 0}
+      onLike={() => reader.like(subject).then((ref) => setLikeUri(ref.uri))}
+      onUnlike={() => likeUri && reader.unlike(likeUri).then(() => setLikeUri(null))}
+    />
+  );
+}
+```
+
+`count` is whatever authoritative number you pass in — `Likes.Button` only *adjusts* it by ±1 around your in-flight toggle, then defers back to your prop once it catches up. For "did I like this", there's no authenticated AppView to ask directly, so `@hedgerow/reader`'s `findLike` pages the reader's own repo instead — see its README for the honest bound on that (a very old like, under a very deep like history, may not be found) and how `like()` mitigates the resulting duplicate-record risk.
+
+### Per-comment interactions
+
+`Comments.LikeButton` and `Comments.ReplyButton` are the per-comment counterparts, driven by two props on `Comments.Root`:
+
+```tsx
+<Comments.Root
+  post={post}
+  onCommentAction={(action, node) => {
+    if (action === "like") return reader.like({ uri: node.uri, cid: node.cid }).then(() => {});
+    if (action === "unlike") return likedUris.get(node.uri)?.then((uri) => uri && reader.unlike(uri));
+    if (action === "reply") setReplyTarget({ uri: node.uri, cid: node.cid, handle: node.author.handle });
+  }}
+  isCommentLiked={(node) => likedByUri[node.uri]} // your own cache of findLike() results, keyed by uri
+>
+  <Comments.List>
+    <Comments.Item>
+      <Comments.LikeButton />
+      <Comments.ReplyButton>Reply</Comments.ReplyButton>
+      <Comments.Replies />
+    </Comments.Item>
+  </Comments.List>
+</Comments.Root>
+```
+
+`Comments.ReplyButton` does **not** open its own composer — it just calls `onCommentAction("reply", node)` so you can retarget your existing `Reply.*` composer's `parent` at `{ uri: node.uri, cid: node.cid }` (keeping `root` as the thread root). One composer instance, retargeted, not one mounted per comment — see the demo's `CommentThread.tsx` for the full "Replying to @handle · Cancel" pattern. Both parts are disabled/unrendered whenever `onCommentAction` is omitted, so this whole surface stays inert (and `@hedgerow/react` stays auth-free) until you wire it up.
+
+### Optimistic replies
+
+`@hedgerow/reader`'s `createReply()` (or your own write) already returns the new reply's real `{ uri, cid }` once the write succeeds — well before any AppView has indexed it. `useComments()`'s `addOptimisticReply({ ref, parentUri, text, author })` inserts that reply into the tree **immediately**, keyed by its own real uri (no temp-id reconciliation), nested under `parentUri` (the root post's uri for a top-level reply, or an existing comment's uri for a nested one):
+
+```tsx
+const { addOptimisticReply, refetch } = useCommentsContext();
+
+async function handleSubmit(text: string) {
+  const ref = await reader.createReply({ root, parent, text });
+  addOptimisticReply({ ref, parentUri: parent.uri, text, author: session });
+  // Give the AppView a few seconds to index it, confirming/unconfirming as
+  // each refetch lands — see DeliveryState below. Not awaited: the reply is
+  // already visible, no reason to keep the composer in a submitting state.
+  [2000, 4000, 6000].forEach((ms) => setTimeout(refetch, ms));
+}
+```
+
+The node then moves through `Comments.Item`'s `data-state`, exposed as `state.deliveryState` too:
+
+- **`pending`** — the write succeeded; no `refetch()` has found it in the real tree yet.
+- **`confirmed`** — a `refetch()` just found it (briefly, ~1.2s, as a hand-off signal before the attribute disappears — it's now just an ordinary node).
+- **`unconfirmed`** — `optimisticGiveUpAfter` (default 3) refetches passed without the AppView indexing it. **The node keeps showing regardless** — this state exists specifically so a reply the write actually succeeded for never just vanishes.
+
+`Comments.Item` also carries `data-entering` for exactly one frame after it first mounts — true for a brand new optimistic insert, and for any node appearing for the first time on a revalidate (existing rows don't re-trigger it, since React keys each item by uri and only a genuinely new one gets a fresh mount). Style the "before" look on `[data-entering]` and let a `transition` animate to the resting style once it's removed:
+
+```css
+.comment {
+  opacity: 1;
+  transition: opacity 0.3s ease;
+}
+.comment[data-entering] { opacity: 0; }
+.comment[data-state="pending"],
+.comment[data-state="unconfirmed"] { opacity: 0.6; }
+.comment[data-state="pending"]::after { content: "Sending…"; }
+.comment[data-state="unconfirmed"]::after { content: "Not visible to others yet"; }
+```
+
+v1 ships entering-only transitions (no exit animation — a confirmed node just keeps existing, so there's nothing to animate out of the DOM).
+
 ## Hooks
 
 The components are a thin shell over three hooks. Use them directly when you want your own markup entirely.
@@ -274,6 +387,7 @@ interface UseCommentsOptions {
   appView?: string;                      // override the AppView base URL
   fetchImpl?: typeof fetch;              // injectable fetch
   cacheTtlMs?: number;                   // handle→DID cache TTL
+  optimisticGiveUpAfter?: number;        // refetches before a pending optimistic reply flips to "unconfirmed" (default 3)
 }
 
 interface UseCommentsReturn {
@@ -283,12 +397,14 @@ interface UseCommentsReturn {
   root: CommentNode | undefined;         // the root post node (may be a stub)
   stats: PostStats | undefined;          // root-post engagement counts
   postUrl: string | undefined;           // "reply on Bluesky" target
-  comments: CommentNode[];               // top-level comments, sorted + filtered
+  comments: CommentNode[];               // top-level comments, sorted + filtered + optimistic replies merged in
   sort: SortOrder;
   setSort: (sort: SortOrder) => void;    // re-sorts client-side, no refetch
-  refetch: () => void;
+  refetch: () => void;                   // also drives the optimistic confirm/unconfirm sweep — see Optimistic replies
   isIdle: boolean; isLoading: boolean; isSuccess: boolean; isError: boolean;
   isEmpty: boolean;                      // loaded with zero visible comments
+  addOptimisticReply: (input: OptimisticReplyInput) => void; // see Optimistic replies
+  deliveryStateOf: (uri: string) => "pending" | "confirmed" | "unconfirmed" | undefined; // Comments.Item's data-state source
 }
 ```
 
@@ -343,6 +459,8 @@ interface UseReplyReturn {
 ```
 
 Unlike the other two, `useReply` fetches nothing — it's pure client-side composer state; `onSubmit` is where you plug in the actual write (e.g. [`@hedgerow/reader`](../reader)'s `createReply`).
+
+`useLikeButton(options)` is the engine behind `Likes.Button`/`Comments.LikeButton` — same shape as `useReply`: `{ liked, count, onLike, onUnlike, disabled? }` in, `{ liked, count, isBusy, isDisabled, toggle }` out, with the optimistic ±1 count adjustment and rollback-on-rejection built in. Use it directly for fully custom like UI.
 
 There's also `useCommentNode()` — the current `CommentNode` inside a `<Comments.Item>`, the escape hatch for building your own parts — and the context hooks `useCommentsContext()` / `useLikesContext()` / `useReplyContext()` (throw if used outside their respective `Root`).
 

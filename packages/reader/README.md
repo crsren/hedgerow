@@ -66,6 +66,9 @@ interface Reader {
   signOut(): Promise<void>;
   getProfile(): Promise<ReaderProfile | null>;  // did, handle, displayName, avatar — always hits the network
   createReply(input: CreateReplyInput): Promise<StrongRef>;
+  like(subject: StrongRef): Promise<StrongRef>;     // app.bsky.feed.like; deduped against findLike first
+  unlike(likeUri: string): Promise<void>;
+  findLike(subjectUri: string): Promise<string | null>;  // "did I like this?" — see the bound below
 }
 
 interface ReaderSession { did: string; handle: string; displayName?: string }
@@ -79,6 +82,23 @@ interface CreateReplyInput {
 ```
 
 `restore()` is the only call you need on page load: it transparently handles both "returning visitor with a cached session" and "just landed back from the OAuth redirect" — the underlying `BrowserOAuthClient.init()` distinguishes them internally. It's safe to call more than once (e.g. a component mounting twice under React Strict Mode); later calls reuse the first call's result rather than re-running the OAuth client's one-time init.
+
+## Liking a post
+
+```ts
+const ref = await reader.like({ uri: post.uri, cid: post.cid }); // { uri, cid } of the new like record
+await reader.unlike(ref.uri);
+```
+
+There is no authenticated AppView to ask "did I like this" directly — the public AppView (what `@hedgerow/comments` reads) has no viewer state. `findLike` answers it instead by paging the reader's own `app.bsky.feed.like` collection via `com.atproto.repo.listRecords`, newest first:
+
+```ts
+const likeUri = await reader.findLike(post.uri); // the like's own uri, or null
+```
+
+**The bound, honestly**: this pages at most ~10 pages (~1000 like records) before giving up. A reader who has liked more than ~1000 things *more recently* than the post in question is still found (it's newest-first); one who liked THIS post a long time ago, buried under a mountain of more recent likes, may come back `null` even though a like technically exists — the button would then show "not liked". Liking again in that state is harmless on Bluesky's side (both records just count toward the post's `likeCount`) but does create a duplicate record. `like()` mitigates this by calling `findLike` first and reusing the existing ref instead of writing a new one, so the residual failure mode narrows to a reader who both (a) has that pathological like history and (b) clicks like on a post they secretly already liked ages ago — accepted as-is for v1.
+
+Results are cached in memory for the lifetime of the `Reader` instance (cleared on sign-in/out), so repeated `findLike`/`like` calls for the same subject after the first are free — no re-paging.
 
 ## Client ID
 

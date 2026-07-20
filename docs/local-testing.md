@@ -158,10 +158,11 @@ task) — it's a separate `e2e` script with no turbo task defined for it.
 read core needs, computed live off the local PDS:
 
 - **`app.bsky.feed.getPostThread`** — walks `reply.parent.uri` backlinks
-  across every known local account's `app.bsky.feed.post` records
-  (`com.atproto.repo.listRecords`) to build the same nested
-  `threadViewPost`/`notFoundPost` shape `packages/comments/src/thread.ts`
-  normalizes. Like counts come from matching `app.bsky.feed.like` records.
+  across every repo the PDS currently hosts (discovered live, see below) via
+  `app.bsky.feed.post` records (`com.atproto.repo.listRecords`) to build the
+  same nested `threadViewPost`/`notFoundPost` shape
+  `packages/comments/src/thread.ts` normalizes. Like counts come from
+  matching `app.bsky.feed.like` records.
 - **`app.bsky.feed.getLikes`** — pages `app.bsky.feed.like` records whose
   `subject.uri` matches, newest first.
 - **`com.atproto.identity.resolveHandle`** — proxied straight to the PDS,
@@ -176,9 +177,20 @@ that `packages/comments`'s normalization code — and therefore
 production. CORS headers are set so a real browser can call across origins
 (astro dev server -> shim, different ports), same as the public AppView.
 
-`accounts` is a live `Map<did, {handle, displayName}>` the shim reads on
-every request — `dev-net.mjs` never needs to restart it after creating new
-accounts.
+**Which repos it reads is discovered live, not seeded (SLIMS-69).** Early
+versions iterated only the static `accounts` map `dev-net.mjs` populates at
+boot (alice/bob/carol) — which meant a repo created *after* the shim started
+(a reader who signs up mid-session via the real "Sign up with Bluesky" flow,
+or any test account minted post-boot) was invisible to `getPostThread`/
+`getLikes` no matter how it replied or liked: the write succeeded, but the
+shim never walked to it. `listAcrossAccounts` now calls
+`com.atproto.sync.listRepos` on the PDS on every request to get the live set
+of DIDs, and only uses `accounts` as a name/displayName cache — a DID it
+doesn't recognize gets a `com.atproto.repo.describeRepo` lookup and is
+backfilled into the map. `accounts` is still a live
+`Map<did, {handle, displayName}>` `dev-net.mjs`/tests can mutate directly
+(cheap, skips the describeRepo round trip for known accounts), but it's no
+longer required for a repo's records to count.
 
 ## Plumbing added to packages (why it's additive and safe)
 

@@ -88,7 +88,29 @@ export async function createDefaultClient(opts: DefaultClientOptions): Promise<O
   });
 }
 
-/** Build the real `Agent`, authenticated with the given OAuth session. */
+/**
+ * Build the real `Agent`, authenticated with the given OAuth session, wrapped
+ * to add `listOwnRecords` — the real `Agent` only exposes that as
+ * `agent.com.atproto.repo.listRecords({ repo, collection, ... })`, which
+ * needs the reader's own did threaded in as `repo` on every call; the rest of
+ * `AgentLike` (getProfile/post/like/deleteLike) passes straight through.
+ */
 export function createDefaultAgent(session: OAuthSessionLike): AgentLike {
-  return new Agent(session);
+  const agent = new Agent(session);
+  return {
+    getProfile: (params) => agent.getProfile(params),
+    post: (record) => agent.post(record as Parameters<Agent["post"]>[0]),
+    like: (uri, cid) => agent.like(uri, cid),
+    deleteLike: (likeUri) => agent.deleteLike(likeUri),
+    async listOwnRecords({ collection, limit, cursor, reverse }) {
+      const { data } = await agent.com.atproto.repo.listRecords({
+        repo: agent.assertDid,
+        collection,
+        ...(limit !== undefined ? { limit } : {}),
+        ...(cursor !== undefined ? { cursor } : {}),
+        ...(reverse !== undefined ? { reverse } : {}),
+      });
+      return { records: data.records, cursor: data.cursor };
+    },
+  };
 }
