@@ -6,10 +6,15 @@
 # any package whose version is absent from the registry — even with zero
 # pending changesets. It tried on the very first push.)
 #
-# To enable real publishing later, all three of:
-#   1. Create the @hedgerow org on npm and add an NPM_TOKEN repo secret.
-#   2. Make the repo public (npm provenance needs an OIDC-attestable source).
-#   3. Restore `publish: pnpm release` on the changesets/action step below.
+# Publishing will use npm TRUSTED PUBLISHING (OIDC) — no NPM_TOKEN secret ever.
+# Trusted publishing can only be configured on packages that already exist, so:
+#   1. First release runs from a maintainer machine (`pnpm release`, logged-in npm).
+#   2. On npmjs.com, per package: Settings -> Trusted Publisher -> GitHub Actions
+#      -> repo crsren/hedgerow, workflow release.yml.
+#   3. Make the repo public (OIDC needs an attestable source), ensure the runner
+#      has an OIDC-capable npm CLI (recent npm; add an npm upgrade step if the
+#      image's is too old), then restore `publish: pnpm release` below.
+#      `permissions: id-token: write` below is already in place for this.
 
 name: Release
 
