@@ -1,6 +1,6 @@
 {
   "name": "@hedgerow/comments",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Framework-agnostic read core for Bluesky comments and likes: resolve a post, page its replies and likes off the public AppView, shape them into a tree.",
   "keywords": [
     "atproto",
