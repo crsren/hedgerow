@@ -8,7 +8,10 @@
     "build": "astro build",
     "preview": "astro preview",
     "typecheck": "astro check",
-    "publish:pds": "node scripts/publish.mjs"
+    "publish:pds": "node scripts/publish.mjs",
+    "dev:net": "node scripts/dev-net.mjs",
+    "e2e": "playwright test",
+    "e2e:install": "playwright install chromium"
   },
   "dependencies": {
     "@astrojs/react": "^4.2.0",
@@ -20,6 +23,9 @@
   },
   "devDependencies": {
     "@astrojs/check": "^0.9.4",
+    "@atproto/api": "^0.20.0",
+    "@atproto/dev-env": "^0.3.140",
+    "@playwright/test": "^1.49.1",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "typescript": "^5.7.2"

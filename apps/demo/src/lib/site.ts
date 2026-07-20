@@ -85,11 +85,34 @@ function toLoadedSite(site: Site): LoadedSite {
  * The single entry point for both modes.
  * - live: HEDGEROW_HANDLE set -> fetch real records from the PDS.
  * - local: no env -> shape local markdown into records in memory.
+ *
+ * Live mode normally resolves the handle over the real network (bsky resolver
+ * + plc.directory). For local end-to-end testing against an in-process
+ * atproto network (`@atproto/dev-env`'s TestNetworkNoAppView — see
+ * apps/demo/scripts/dev-net.mjs), three optional env vars redirect that
+ * resolution:
+ *   - HEDGEROW_PDS_URL: read straight from this PDS, skipping PLC entirely.
+ *   - HEDGEROW_PLC_URL: use this PLC directory instead of plc.directory.
+ *   - HEDGEROW_RESOLVE_HANDLE_SERVICE: resolve the handle against this
+ *     service instead of the public bsky AppView. Defaults to
+ *     HEDGEROW_PDS_URL when unset, since a PDS resolves handles for the
+ *     accounts it hosts.
+ * All three are no-ops when unset — live mode against the real network is
+ * unaffected.
  */
 export async function loadSite(): Promise<LoadedSite> {
   const handle = process.env.HEDGEROW_HANDLE;
-  if (handle) return toLoadedSite(await readSite(handle));
-  return loadLocalSite();
+  if (!handle) return loadLocalSite();
+
+  const pds = process.env.HEDGEROW_PDS_URL;
+  const plcUrl = process.env.HEDGEROW_PLC_URL;
+  const service = process.env.HEDGEROW_RESOLVE_HANDLE_SERVICE ?? pds;
+  const opts = {
+    ...(pds ? { pds } : {}),
+    ...(plcUrl ? { plcUrl } : {}),
+    ...(service ? { service } : {}),
+  };
+  return toLoadedSite(await readSite(handle, fetch, opts));
 }
 
 /** The document's routable slug lives in its `path` (e.g. "/back-to-web-one"),
