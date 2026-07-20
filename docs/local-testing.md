@@ -77,14 +77,13 @@ pnpm --filter @hedgerow/demo dev
 ```
 
 The site now renders from the local PDS's real records (live mode), same as
-it would against a real PDS with a real handle. The comments island still
-calls the public AppView by default (`https://public.api.bsky.app` — see
-`packages/comments/src/xrpc.ts`'s `DEFAULT_APPVIEW`), since
-`apps/demo/src/components/CommentThread.tsx` doesn't currently take an
-`appView` override prop; for a manual click-through with local comments, use
-a browser extension or local proxy to redirect `public.api.bsky.app` traffic
-to `HEDGEROW_APPVIEW_URL`, or just run the Playwright suite below, which does
-this automatically via network-level route interception.
+it would against a real PDS with a real handle. The printed exports include
+the four `PUBLIC_HEDGEROW_*` vars, so the comments island reads threads/likes
+from the local AppView shim and the reply box's OAuth client points at the
+local PDS — the full UX (browse, log in as `carol.test`, reply) works
+interactively in your own browser, all offline. Without the `PUBLIC_` vars
+exported, the island falls back to the public AppView and real OAuth, same
+as production.
 
 Press Ctrl-C to tear the network down.
 
