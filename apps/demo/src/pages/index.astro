@@ -1,8 +1,9 @@
 ---
 import Base from "../layouts/Base.astro";
-import { loadSite, slugOf } from "../lib/site";
+import { loadSiteFresh, slugOf } from "../lib/site";
 
-const { publication, publicationUri, documents } = await loadSite();
+// Fresh per request (TTL-memoized) so /edit saves show up on reload — see [...slug].astro.
+const { publication, publicationUri, documents } = await loadSiteFresh();
 const siteName = publication?.name ?? "Untitled site";
 
 const dateFmt = new Intl.DateTimeFormat("en", {

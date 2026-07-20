@@ -1,7 +1,7 @@
 ---
 import MarkdownIt from "markdown-it";
 import Base from "../layouts/Base.astro";
-import { loadSite, slugOf } from "../lib/site";
+import { loadSite, loadSiteFresh, slugOf } from "../lib/site";
 import CommentThread from "../components/CommentThread";
 import type { DocumentRecord } from "@hedgerow/publish";
 import { fetchLikes, fetchThread, type LikesResult, type ThreadResult } from "@hedgerow/comments";
@@ -70,7 +70,21 @@ interface Props {
   initialThread?: ThreadResult;
   initialLikes?: LikesResult;
 }
-const { doc, recordUri, bskyPostUri, initialThread, initialLikes } = Astro.props;
+const { doc: staticDoc, recordUri, bskyPostUri, initialThread, initialLikes } = Astro.props;
+
+// Re-read the document per request so edits saved via /edit (SLIMS-64) show
+// up on reload: getStaticPaths (where `staticDoc` comes from) is computed
+// ONCE per dev-server run and cached, but this frontmatter runs on every dev
+// request — and exactly once in a static build, where fresh === static
+// anyway. loadSiteFresh() is TTL-memoized so this isn't a PDS round trip per
+// page view; on any read failure the build-time snapshot still renders.
+let doc = staticDoc;
+try {
+  const fresh = (await loadSiteFresh()).documents.find(({ value }) => slugOf(value) === slugOf(staticDoc));
+  if (fresh) doc = fresh.value;
+} catch {
+  // PDS unreachable mid-session — the getStaticPaths snapshot is still fine.
+}
 
 // SLIMS-64: prefer the rich `content` union's markdown member, rendered to
 // HTML server-side, when present — falling back to textContent's plaintext

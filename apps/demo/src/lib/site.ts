@@ -115,6 +115,28 @@ export async function loadSite(): Promise<LoadedSite> {
   return toLoadedSite(await readSite(handle, fetch, opts));
 }
 
+// Short-TTL memo over loadSite() for per-request use. Astro runs a page's
+// frontmatter on EVERY request in dev but its getStaticPaths only once per
+// server run — so pages that want edits (via /edit, SLIMS-64) to show up on
+// reload must re-read the site per request, and this keeps that from becoming
+// one PDS round trip per page per request: within the TTL every page shares
+// one in-flight/settled read (a static `astro build` renders all pages well
+// inside a single window, so builds still do one fetch total).
+const SITE_TTL_MS = 3_000;
+let siteMemo: { at: number; promise: Promise<LoadedSite> } | null = null;
+export function loadSiteFresh(): Promise<LoadedSite> {
+  const now = Date.now();
+  if (siteMemo && now - siteMemo.at < SITE_TTL_MS) return siteMemo.promise;
+  const promise = loadSite();
+  siteMemo = { at: now, promise };
+  // A failed read shouldn't poison the whole TTL window — drop it so the
+  // next request retries instead of re-throwing a stale error.
+  promise.catch(() => {
+    if (siteMemo?.promise === promise) siteMemo = null;
+  });
+  return promise;
+}
+
 /** The document's routable slug lives in its `path` (e.g. "/back-to-web-one"),
  * since the record shape has no slug field of its own. */
 export function slugOf(doc: DocumentRecord): string {
