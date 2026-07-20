@@ -1,3 +1,4 @@
+import * as React from "react";
 import { describe, it, expect, vi } from "vitest";
 import { render, act, waitFor, within, fireEvent } from "@testing-library/react";
 import { Comments, useComments, useCommentsContext, type OptimisticReplyInput } from "../src/index";
@@ -641,6 +642,99 @@ describe("Comments optimistic replies (data-delivery / data-entering, SLIMS-69/7
     // Cleared a couple of animation frames later (double-rAF, not a single
     // one — see Comments.Item's own doc comment on why).
     await waitFor(() => expect(item.hasAttribute("data-entering")).toBe(false));
+  });
+
+  it("the confirm/unconfirm sweep is pure under React Strict Mode's double-invoked updaters (SLIMS-70)", async () => {
+    // Regression for the old bug: setJustConfirmed + setTimeout scheduling
+    // used to live INSIDE the setOptimistic(prev => ...) updater. React 18
+    // Strict Mode double-invokes a state updater function (not just mount
+    // effects) to surface exactly this kind of impurity — under the old
+    // code, confirming a reply here would have scheduled the "clear the
+    // flash" timer TWICE. The fix hoists the computation out into a pure
+    // read of a ref, then plain setState/setTimeout statements — so double
+    // invocation of the (now side-effect-free) updater is harmless, and this
+    // test just has to prove the confirm flow still behaves correctly with
+    // Strict Mode's extra invocation in play, without erroring or getting
+    // stuck.
+    const body = loadFixture<RawGetPostThreadResponse>("getPostThread") as RawGetPostThreadResponse & {
+      thread: { replies: unknown[] };
+    };
+    const newUri = "at://did:plc:me/app.bsky.feed.post/strict-confirm";
+    const confirmedBody = {
+      ...body,
+      thread: {
+        ...body.thread,
+        replies: [
+          ...body.thread.replies,
+          {
+            $type: "app.bsky.feed.defs#threadViewPost",
+            post: {
+              uri: newUri,
+              cid: "bafystrictconfirm",
+              author: { did: "did:plc:me", handle: "me.bsky.social" },
+              record: {
+                $type: "app.bsky.feed.post",
+                text: "confirmed under strict mode",
+                createdAt: new Date().toISOString(),
+              },
+              likeCount: 0,
+              replyCount: 0,
+              repostCount: 0,
+              indexedAt: new Date().toISOString(),
+            },
+            replies: [],
+          },
+        ],
+      },
+    };
+    const stub = stubFetch((method) => {
+      if (method !== "app.bsky.feed.getPostThread") return jsonResponse({}, 501);
+      return jsonResponse(confirmedBody as unknown as RawGetPostThreadResponse);
+    });
+
+    let addOptimisticReply!: (input: OptimisticReplyInput) => void;
+    let refetch!: () => void;
+    function Capture() {
+      const ctx = useCommentsContext();
+      addOptimisticReply = ctx.addOptimisticReply;
+      refetch = ctx.refetch;
+      return null;
+    }
+
+    const { container, findByText } = render(
+      <React.StrictMode>
+        <Comments.Root post={ROOT_URI} fetchImpl={stub.fetch}>
+          <Capture />
+          <Comments.List>
+            <Comments.Item>
+              <Comments.Content />
+            </Comments.Item>
+          </Comments.List>
+        </Comments.Root>
+      </React.StrictMode>,
+    );
+    await waitFor(() => expect(container.querySelector("[data-comment]")).not.toBeNull());
+
+    act(() => {
+      addOptimisticReply({
+        ref: { uri: newUri, cid: "bafystrictconfirm" },
+        parentUri: ROOT_URI,
+        text: "confirmed under strict mode",
+        author: { did: "did:plc:me", handle: "me.bsky.social" },
+      });
+    });
+    const node = await findByText("confirmed under strict mode");
+
+    await act(async () => refetch());
+
+    // Confirmed, flashes briefly, then settles to an ordinary node — exactly
+    // once, not twice, and never gets stuck mid-flash.
+    await waitFor(() => expect(node.closest("[data-comment]")!.getAttribute("data-delivery")).toBe("confirmed"));
+    // The flash window is 1.2s (CONFIRMED_FLASH_MS) — past waitFor's default timeout.
+    await waitFor(() => expect(node.closest("[data-comment]")!.hasAttribute("data-delivery")).toBe(false), {
+      timeout: 2000,
+    });
+    expect(container.contains(node)).toBe(true);
   });
 });
 
