@@ -148,6 +148,10 @@ export async function startDevNet({ log = console.log } = {}) {
     PUBLIC_HEDGEROW_HANDLE_RESOLVER: pdsUrl,
     PUBLIC_HEDGEROW_PLC_URL: plcUrl,
     PUBLIC_HEDGEROW_OAUTH_ALLOW_HTTP: "1",
+    // Routes the "Sign up with Bluesky" button's prompt:'create' flow at the
+    // local PDS — without it, signUp() defaults to the real https://bsky.social
+    // and one click would leave the fully-local sandbox for the live network.
+    PUBLIC_HEDGEROW_SIGNUP_SERVICE: pdsUrl,
   };
 
   return {
@@ -212,8 +216,12 @@ if (isMain) {
   console.log("\nLocal atproto network is up. Point the demo's live mode at it with:\n");
   for (const [k, v] of Object.entries(dn.env)) console.log(`  export ${k}=${v}`);
   console.log(
-    "\nThen, in another terminal:\n\n  pnpm --filter @hedgerow/demo dev\n\n(and open http://localhost:4321)",
+    // 127.0.0.1, NOT localhost: OAuth loopback redirect URIs reject the
+    // `localhost` hostname (RFC 8252), so login only works from a loopback-IP
+    // origin. astro.config.mjs binds dev to 127.0.0.1 for the same reason.
+    "\nThen, in another terminal:\n\n  pnpm --filter @hedgerow/demo dev\n\n(and open http://127.0.0.1:4321)",
   );
+  console.log(`\nLog in on the site as ${dn.reader.handle} / ${dn.reader.password} (local-only account).`);
   console.log("\nPress Ctrl-C to stop.\n");
 
   let shuttingDown = false;

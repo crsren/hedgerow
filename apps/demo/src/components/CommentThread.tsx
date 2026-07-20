@@ -23,6 +23,7 @@ const appViewOverride = import.meta.env.PUBLIC_HEDGEROW_APPVIEW_URL as string | 
 const handleResolverOverride = import.meta.env.PUBLIC_HEDGEROW_HANDLE_RESOLVER as string | undefined;
 const plcDirectoryUrlOverride = import.meta.env.PUBLIC_HEDGEROW_PLC_URL as string | undefined;
 const allowHttpOverride = import.meta.env.PUBLIC_HEDGEROW_OAUTH_ALLOW_HTTP === "1";
+const signupServiceOverride = import.meta.env.PUBLIC_HEDGEROW_SIGNUP_SERVICE as string | undefined;
 
 // One reader identity per page load. Cheap to construct — createReader() does
 // no OAuth-client/IndexedDB work until the first actual call (see the package
@@ -88,6 +89,7 @@ function ReplyBox() {
   const [handleInput, setHandleInput] = useState("");
   const [signingIn, setSigningIn] = useState(false);
   const [signingUp, setSigningUp] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   // AppView indexing lag: after a successful post, poll for the reply to show
   // up in the thread — up to 3 retries, 2s apart (~6s) — then give up quietly.
@@ -136,9 +138,13 @@ function ReplyBox() {
     const handle = handleInput.trim();
     if (!handle || signingIn) return;
     setSigningIn(true);
+    setAuthError(null);
     try {
       await reader.signIn(handle); // redirects; only returns on failure/abort
-    } catch {
+    } catch (err) {
+      // Surface it — a swallowed OAuth setup error (bad handle, misconfigured
+      // client, non-loopback dev origin) otherwise looks like a dead button.
+      setAuthError(err instanceof Error ? err.message : "Could not start login.");
       setSigningIn(false);
     }
   }
@@ -146,11 +152,15 @@ function ReplyBox() {
   async function handleSignUp() {
     if (signingUp) return;
     setSigningUp(true);
+    setAuthError(null);
     try {
-      // prompt: "create" — the reader signs up on bsky.social mid-flow and
-      // lands back here already authorized; no separate login step after.
-      await reader.signUp(); // redirects; only returns on failure/abort
-    } catch {
+      // prompt: "create" — the reader signs up on the authorization server
+      // mid-flow and lands back here already authorized; no separate login
+      // step after. The service defaults to bsky.social; local dev-net mode
+      // overrides it so the fully-local sandbox never reaches the live network.
+      await reader.signUp(signupServiceOverride); // redirects; only returns on failure/abort
+    } catch (err) {
+      setAuthError(err instanceof Error ? err.message : "Could not start signup.");
       setSigningUp(false);
     }
   }
@@ -175,6 +185,9 @@ function ReplyBox() {
         <div className="hedgerow-reply-login">
           <input
             type="text"
+            id="hedgerow-reply-handle"
+            name="handle"
+            aria-label="Your Bluesky handle"
             className="hedgerow-reply-handle"
             placeholder="your-handle.bsky.social"
             value={handleInput}
@@ -211,6 +224,11 @@ function ReplyBox() {
             (or create an account on bsky.app)
           </a>
         </p>
+        {authError && (
+          <p className="hedgerow-reply-error" role="alert">
+            {authError}
+          </p>
+        )}
       </Reply.SignedOut>
 
       <Reply.SignedIn className="hedgerow-reply-signedin">
@@ -228,7 +246,14 @@ function ReplyBox() {
             Sign out
           </button>
         </div>
-        <Reply.Field className="hedgerow-reply-field" placeholder="Write a reply…" rows={3} />
+        <Reply.Field
+          className="hedgerow-reply-field"
+          id="hedgerow-reply-field"
+          name="reply"
+          aria-label="Write a reply"
+          placeholder="Write a reply…"
+          rows={3}
+        />
         <div className="hedgerow-reply-actions">
           <Reply.Submit className="hedgerow-reply-submit" />
         </div>

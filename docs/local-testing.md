@@ -78,12 +78,17 @@ pnpm --filter @hedgerow/demo dev
 
 The site now renders from the local PDS's real records (live mode), same as
 it would against a real PDS with a real handle. The printed exports include
-the four `PUBLIC_HEDGEROW_*` vars, so the comments island reads threads/likes
+the five `PUBLIC_HEDGEROW_*` vars, so the comments island reads threads/likes
 from the local AppView shim and the reply box's OAuth client points at the
 local PDS — the full UX (browse, log in as `carol.test`, reply) works
 interactively in your own browser, all offline. Without the `PUBLIC_` vars
 exported, the island falls back to the public AppView and real OAuth, same
 as production.
+
+Open **http://127.0.0.1:4321** — not `localhost`: OAuth loopback redirect
+URIs reject the `localhost` hostname (RFC 8252), so login can't start from a
+`http://localhost` origin. `astro.config.mjs` binds dev to 127.0.0.1 for this
+reason.
 
 Press Ctrl-C to tear the network down.
 
@@ -119,13 +124,15 @@ teardown in `serve.mjs`.
 - the comment thread hydrates and shows `bob.test`'s two seeded replies;
 - the like count shows the seeded like.
 
-`apps/demo/src/components/CommentThread.tsx` reads four `PUBLIC_`-prefixed
+`apps/demo/src/components/CommentThread.tsx` reads five `PUBLIC_`-prefixed
 env vars (`import.meta.env` — Astro/Vite only expose that prefix to browser
 code) and threads them into `createReader()` and `Comments.Root`/
 `Likes.Root`'s `appView` prop: `PUBLIC_HEDGEROW_APPVIEW_URL`,
 `PUBLIC_HEDGEROW_HANDLE_RESOLVER`, `PUBLIC_HEDGEROW_PLC_URL`,
-`PUBLIC_HEDGEROW_OAUTH_ALLOW_HTTP`. `dev-net.mjs`'s `env` object sets all
-four (see [Wiring the reply UI to the local network](#wiring-the-reply-ui-to-the-local-network)
+`PUBLIC_HEDGEROW_OAUTH_ALLOW_HTTP`, `PUBLIC_HEDGEROW_SIGNUP_SERVICE` (routes
+the "Sign up with Bluesky" `prompt: 'create'` flow at the local PDS instead
+of the real bsky.social). `dev-net.mjs`'s `env` object sets all
+five (see [Wiring the reply UI to the local network](#wiring-the-reply-ui-to-the-local-network)
 below), so `serve.mjs` spawning `astro dev` with that env already points the
 comments island and the reader's OAuth client at the local network — no
 `page.route()` interception needed (an earlier version of this spec used
@@ -202,9 +209,9 @@ omitted.
   through to `BrowserOAuthClient` — the browser-OAuth equivalent of
   `resolvePds`'s `plcUrl`/the Node OAuth client's `allowHttp`. `createReader()`
   (`reader.ts`) threads both through unchanged from its own options.
-- **`apps/demo/src/components/CommentThread.tsx`**: reads four
+- **`apps/demo/src/components/CommentThread.tsx`**: reads five
   `PUBLIC_HEDGEROW_*` env vars (see above) and passes them into
-  `createReader()` and `Comments.Root`/`Likes.Root`'s `appView`. All four are
+  `createReader()` and `Comments.Root`/`Likes.Root`'s `appView`. All five are
   `undefined` in production, so `createReader()` and the comments island fall
   back to their normal defaults exactly as before this work.
 
