@@ -38,26 +38,54 @@ export async function listRecords<T>(
   return out;
 }
 
+/** The public, unauthenticated Bluesky handle resolver (real network default). */
+const DEFAULT_RESOLVE_HANDLE_SERVICE = "https://public.api.bsky.app";
+/** The public PLC directory (real network default). */
+const DEFAULT_PLC_URL = "https://plc.directory";
+
+export interface ResolveHandleOptions {
+  /**
+   * Base URL to call `com.atproto.identity.resolveHandle` against. Defaults to
+   * the public bsky AppView. A PDS also implements this method for the
+   * accounts it hosts, so pointing this at a local PDS (e.g. `@atproto/dev-env`'s
+   * `TestPds#url`) resolves local test handles fully offline.
+   */
+  service?: string;
+}
+
 /** Resolve a handle to its DID (real network: bsky resolver). A `did:` passes through. */
 export async function resolveDid(
   identifier: string,
   fetchImpl: typeof fetch = fetch,
+  opts: ResolveHandleOptions = {},
 ): Promise<string> {
   if (identifier.startsWith("did:")) return identifier;
+  const service = (opts.service ?? DEFAULT_RESOLVE_HANDLE_SERVICE).replace(/\/+$/, "");
   const r = await fetchImpl(
-    `https://public.api.bsky.app/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(identifier)}`,
+    `${service}/xrpc/com.atproto.identity.resolveHandle?handle=${encodeURIComponent(identifier)}`,
   );
   if (!r.ok) throw new Error(`resolveHandle failed: ${r.status}`);
   return ((await r.json()) as { did: string }).did;
+}
+
+export interface ResolvePdsOptions extends ResolveHandleOptions {
+  /**
+   * PLC directory base URL. Defaults to the public `https://plc.directory`.
+   * Point this at a local PLC server (e.g. `@atproto/dev-env`'s `TestPlc#url`)
+   * to resolve `did:plc:` DIDs fully offline.
+   */
+  plcUrl?: string;
 }
 
 /** Resolve a handle/DID to its DID + PDS endpoint (real network: bsky resolver + PLC). */
 export async function resolvePds(
   identifier: string,
   fetchImpl: typeof fetch = fetch,
+  opts: ResolvePdsOptions = {},
 ): Promise<{ did: string; pds: string }> {
-  const did = await resolveDid(identifier, fetchImpl);
-  const doc = (await (await fetchImpl(`https://plc.directory/${did}`)).json()) as {
+  const did = await resolveDid(identifier, fetchImpl, opts);
+  const plcUrl = (opts.plcUrl ?? DEFAULT_PLC_URL).replace(/\/+$/, "");
+  const doc = (await (await fetchImpl(`${plcUrl}/${did}`)).json()) as {
     service?: { id: string; serviceEndpoint: string }[];
   };
   const svc = (doc.service ?? []).find((s) => s.id === "#atproto_pds");
@@ -102,8 +130,26 @@ export async function readSiteFromPds(
   };
 }
 
+export interface ReadSiteOptions extends ResolvePdsOptions {
+  /**
+   * Skip DID-document resolution (and therefore the PLC directory) entirely
+   * and read straight from this PDS. The identifier is still resolved to a DID
+   * (via `resolveDid`/`opts.service`) so the read targets the right repo. For
+   * a local `@atproto/dev-env` network, this is the same URL as `TestPds#url`.
+   */
+  pds?: string;
+}
+
 /** High-level: resolve a handle/DID over the network, then read its site. */
-export async function readSite(identifier: string, fetchImpl: typeof fetch = fetch): Promise<Site> {
-  const { did, pds } = await resolvePds(identifier, fetchImpl);
+export async function readSite(
+  identifier: string,
+  fetchImpl: typeof fetch = fetch,
+  opts: ReadSiteOptions = {},
+): Promise<Site> {
+  if (opts.pds) {
+    const did = await resolveDid(identifier, fetchImpl, opts);
+    return readSiteFromPds(opts.pds, did, fetchImpl);
+  }
+  const { did, pds } = await resolvePds(identifier, fetchImpl, opts);
   return readSiteFromPds(pds, did, fetchImpl);
 }
