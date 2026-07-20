@@ -53,6 +53,8 @@ function createReader(options?: CreateReaderOptions): Reader;
 interface CreateReaderOptions {
   clientId?: string;          // hosted client-metadata.json URL; omit for loopback dev
   handleResolver?: string;    // resolves handles to DIDs; default the public Bluesky AppView
+  plcDirectoryUrl?: string;   // override the PLC directory; local/test networks only
+  allowHttp?: boolean;        // allow http:// AS/resource metadata endpoints; local/test networks only
   createClient?(): OAuthClientLike | Promise<OAuthClientLike>;  // test seam
   createAgent?(session: OAuthSessionLike): AgentLike;           // test seam
 }
@@ -82,9 +84,11 @@ interface CreateReplyInput {
 
 The OAuth `client_id` tells the authorization server who's asking. `@hedgerow/reader` supports both stories atproto OAuth defines for a public client:
 
-- **Local dev, on a loopback origin (`127.0.0.1` / `[::1]`)** — omit `clientId`. The library then derives the special loopback client id from `window.location`; the authorization server synthesizes matching client metadata for it, so there's nothing to host. This only works when the page is actually served from a loopback address (not `localhost` — the library redirects `localhost` → `127.0.0.1` for you) and gets short-lived refresh tokens (~1 day) with no silent sign-in, per the atproto spec.
+- **Local dev, on a loopback origin (`127.0.0.1` / `[::1]`)** — omit `clientId`. `default-client.ts` builds a spec-correct loopback client id for the current page — `http://localhost?scope=atproto+transition%3Ageneric&redirect_uri=<origin+pathname>` — and loads it via `BrowserOAuthClient.load()`; the authorization server synthesizes matching client metadata for it, so there's nothing to host. This is **not** the same as `@atproto/oauth-client-browser`'s own default (letting `clientMetadata` fall through to its internal `buildLoopbackClientId(window.location)`): that default folds the page's pathname into the client id *itself*, which the provider rejects outside the site root, and it omits `scope` entirely (defaulting to `atproto` only — too narrow for `createReply()`'s writes). Only works on an actual loopback address (not `localhost` — the library redirects `localhost` → `127.0.0.1`), and gets short-lived refresh tokens (~1 day) with no silent sign-in, per the atproto spec.
 
 - **A real deployment** — pass `clientId` pointing at a hosted `client-metadata.json` (the URL *is* the client id). `createReader({ clientId: "https://example.com/oauth/client-metadata.json" })` fetches it via `BrowserOAuthClient.load()`. An example document is at [`apps/demo/public/oauth/client-metadata.json`](../../apps/demo/public/oauth/client-metadata.json) — copy it, update `client_id`/`client_uri`/`redirect_uris` to your real domain, and serve it from that exact URL. It only takes effect once it's live on a real domain; the demo repo can't self-host its own client metadata for local testing (that's what the loopback path is for).
+
+Every authorize call (`signIn()`/`signUp()`) explicitly requests `scope: "atproto transition:generic"`, matching what's embedded in both the loopback client id and `client-metadata.json` — requesting more than a client's own registered scope is rejected server-side, so keep the two in sync if you fork the hosted metadata document.
 
 ## Consent
 
@@ -100,7 +104,9 @@ Resolving a handle (e.g. `someone.bsky.social`) to a DID needs a DNS lookup the 
 
 ## Testing
 
-Unit tests inject both `createClient` and `createAgent`, so nothing in `test/reader.test.ts` ever touches WebCrypto, IndexedDB, or the network — see the file header for the full rationale. `src/default-client.ts` (the real `BrowserOAuthClient`/`Agent` wiring) is the browser dance: like `@hedgerow/publish`'s loopback CLI login, it needs a live browser origin and a human to click through a real login, so it's verified by hand rather than in CI.
+Unit tests inject both `createClient` and `createAgent`, so nothing in `test/reader.test.ts` ever touches WebCrypto, IndexedDB, or the network — see the file header for the full rationale. `src/default-client.ts` (the real `BrowserOAuthClient`/`Agent` wiring) is exercised for real, automatically, by `apps/demo`'s Playwright suite (`pnpm --filter demo e2e`) — see [`docs/local-testing.md`](../../docs/local-testing.md) for how that drives an actual `/oauth/authorize` → password → consent → redirect flow against a fully local atproto network, with no live network involved.
+
+`restore()` is resilient to a failed profile fetch right after login: the session itself is valid the moment the OAuth redirect completes, but `getProfile()` (a separate `app.bsky.actor.getProfile` call) can fail independently — e.g. on a bare local test PDS with no AppView to proxy to. Rather than let that collapse a genuinely successful login back to "signed out," `restore()` falls back to the reader's `did` as a placeholder handle; a later `getProfile()` call fills in the real one once/if it succeeds. On a real deployment (a real PDS backed by a real AppView) this fallback essentially never triggers.
 
 ## License
 

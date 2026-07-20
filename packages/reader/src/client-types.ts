@@ -32,7 +32,10 @@ export interface OAuthClientLike {
    */
   init(): Promise<{ session: OAuthSessionLike } | undefined>;
   /** Redirects the browser; the returned promise only ever rejects (abort). */
-  signIn(input: string, options?: { prompt?: OAuthPrompt; signal?: AbortSignal }): Promise<OAuthSessionLike>;
+  signIn(
+    input: string,
+    options?: { scope?: string; prompt?: OAuthPrompt; signal?: AbortSignal },
+  ): Promise<OAuthSessionLike>;
 }
 
 /** app.bsky.actor.defs#profileViewBasic (subset) — what getProfile hands back. */

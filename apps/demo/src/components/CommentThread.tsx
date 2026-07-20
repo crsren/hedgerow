@@ -11,11 +11,28 @@ import { Comments, Likes, Reply, mergeRefs, useCommentsContext, type CommentNode
 import { createReader, type ReaderSession } from "@hedgerow/reader";
 import "./comment-thread.css";
 
+// Local/test-network overrides, read from Astro's client-exposed env vars
+// (Vite only exposes PUBLIC_-prefixed vars to browser code via
+// import.meta.env — see apps/demo/scripts/dev-net.mjs, which sets these when
+// pointing the demo at a fully local atproto network, and
+// docs/local-testing.md). All four are undefined in production, in which
+// case createReader()/appView fall back to their normal defaults (the public
+// Bluesky AppView, a hosted/loopback OAuth client) — this override path never
+// changes production behavior.
+const appViewOverride = import.meta.env.PUBLIC_HEDGEROW_APPVIEW_URL as string | undefined;
+const handleResolverOverride = import.meta.env.PUBLIC_HEDGEROW_HANDLE_RESOLVER as string | undefined;
+const plcDirectoryUrlOverride = import.meta.env.PUBLIC_HEDGEROW_PLC_URL as string | undefined;
+const allowHttpOverride = import.meta.env.PUBLIC_HEDGEROW_OAUTH_ALLOW_HTTP === "1";
+
 // One reader identity per page load. Cheap to construct — createReader() does
 // no OAuth-client/IndexedDB work until the first actual call (see the package
 // README) — so a module-level singleton is fine even though this module is
 // also evaluated during Astro's SSR pass for the initial HTML.
-const reader = createReader();
+const reader = createReader({
+  ...(handleResolverOverride ? { handleResolver: handleResolverOverride } : {}),
+  ...(plcDirectoryUrlOverride ? { plcDirectoryUrl: plcDirectoryUrlOverride } : {}),
+  ...(allowHttpOverride ? { allowHttp: true } : {}),
+});
 
 /** Depth-first search for a reply's uri in the (already sorted/filtered) tree. */
 function containsReply(nodes: readonly CommentNode[], uri: string): boolean {
@@ -115,8 +132,7 @@ function ReplyBox() {
   if (!data || !root || root.type !== "comment") return null;
   const rootRef = { uri: data.uri, cid: root.cid };
 
-  async function handleSignIn(event: React.FormEvent) {
-    event.preventDefault();
+  async function handleSignIn() {
     const handle = handleInput.trim();
     if (!handle || signingIn) return;
     setSigningIn(true);
@@ -151,19 +167,35 @@ function ReplyBox() {
   return (
     <Reply.Root className="hedgerow-reply-box" session={session} onSubmit={handleSubmit}>
       <Reply.SignedOut className="hedgerow-reply-signedout">
-        <form className="hedgerow-reply-login" onSubmit={handleSignIn}>
+        {/* A plain <div>, not <form> — Reply.Root already renders a <form>
+            (for the reply composer's Enter-to-submit), and nesting a second
+            <form> inside it is invalid HTML: browsers make the outer form
+            "win" the submit, so the inner one's onSubmit never fires. Enter
+            here is handled explicitly via onKeyDown instead. */}
+        <div className="hedgerow-reply-login">
           <input
             type="text"
             className="hedgerow-reply-handle"
             placeholder="your-handle.bsky.social"
             value={handleInput}
             onChange={(event) => setHandleInput(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                void handleSignIn();
+              }
+            }}
             disabled={signingIn}
           />
-          <button type="submit" className="hedgerow-reply-login-button" disabled={signingIn || !handleInput.trim()}>
+          <button
+            type="button"
+            className="hedgerow-reply-login-button"
+            onClick={handleSignIn}
+            disabled={signingIn || !handleInput.trim()}
+          >
             {signingIn ? "Redirecting…" : "Log in with Bluesky"}
           </button>
-        </form>
+        </div>
         <p className="hedgerow-reply-signup">
           New here?{" "}
           <button
@@ -234,13 +266,19 @@ export default function CommentThread({ post }: { post: string }) {
           does not — getLikes has no grand total (Likes.Count = fetched actors,
           page-capped), so the true number is the root post's likeCount, rendered
           via Comments.Stats inside the thread root below. */}
-      <Likes.Root className="hedgerow-likes" post={post}>
+      <Likes.Root className="hedgerow-likes" post={post} appView={appViewOverride}>
         <Likes.Avatars className="hedgerow-avatars" max={6}>
           <Likes.Avatar className="hedgerow-avatar" />
         </Likes.Avatars>
       </Likes.Root>
 
-      <Comments.Root className="hedgerow-comments" post={post} sort="newest" maxDepth={6}>
+      <Comments.Root
+        className="hedgerow-comments"
+        post={post}
+        sort="newest"
+        maxDepth={6}
+        appView={appViewOverride}
+      >
         <LikeCount />
         <Comments.Loading className="hedgerow-status">Loading comments…</Comments.Loading>
         <Comments.Error className="hedgerow-status">

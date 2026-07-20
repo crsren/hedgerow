@@ -9,11 +9,22 @@ import type { CreateReplyInput, Reader, ReaderProfile, ReaderSession, StrongRef 
  * README example points a bare handle at when there's no PDS hint yet. */
 const DEFAULT_SIGNUP_SERVICE = "https://bsky.social";
 
+/** identity + generic record writes — createReply() needs the latter. Every
+ * authorize request asks for exactly this, matching the scope embedded in
+ * the client metadata (see default-client.ts's loopbackClientId and the
+ * demo's client-metadata.json) — requesting more than the client is
+ * registered for would be rejected server-side. */
+const ATPROTO_SCOPE = "atproto transition:generic";
+
 export interface CreateReaderOptions {
   /** Hosted `client-metadata.json` URL for a real deployment. Omit for loopback dev. */
   clientId?: string;
   /** URL of a service exposing `com.atproto.identity.resolveHandle`. Defaults to the public AppView. */
   handleResolver?: string;
+  /** Override the PLC directory base. For local/test networks only — see `docs/local-testing.md`. */
+  plcDirectoryUrl?: string;
+  /** Allow `http://` authorization-server/resource metadata endpoints. For local/test networks only. */
+  allowHttp?: boolean;
   /** Build the underlying OAuth client. Defaults to a real `BrowserOAuthClient`; override in tests. */
   createClient?(): OAuthClientLike | Promise<OAuthClientLike>;
   /** Build the Agent used for reads/writes from a session. Defaults to `new Agent(session)`; override in tests. */
@@ -28,7 +39,13 @@ async function fetchProfileFor(session: OAuthSessionLike, agent: AgentLike): Pro
 export function createReader(options: CreateReaderOptions = {}): Reader {
   const buildClient =
     options.createClient ??
-    (() => createDefaultClient({ clientId: options.clientId, handleResolver: options.handleResolver }));
+    (() =>
+      createDefaultClient({
+        clientId: options.clientId,
+        handleResolver: options.handleResolver,
+        plcDirectoryUrl: options.plcDirectoryUrl,
+        allowHttp: options.allowHttp,
+      }));
   const buildAgent = options.createAgent ?? createDefaultAgent;
 
   // The OAuth client itself is built lazily and at most once — constructing
@@ -56,11 +73,9 @@ export function createReader(options: CreateReaderOptions = {}): Reader {
   // normally. The authorization server for this kind of client (a public
   // browser app) always shows a consent screen — it doesn't accept a silent
   // (`prompt: "none"`) request — so there's no silent variant to offer here.
-  // `prompt` is only forwarded when set, so a plain signIn() call matches the
-  // library's own single-argument `signIn(input)` shape exactly.
   async function redirect(input: string, prompt?: OAuthPrompt): Promise<never> {
     const client = await getClient();
-    await (prompt ? client.signIn(input, { prompt }) : client.signIn(input));
+    await client.signIn(input, { scope: ATPROTO_SCOPE, ...(prompt ? { prompt } : {}) });
     throw new Error(`createReader: signIn() resolved without redirecting (input: ${input})`);
   }
 
@@ -71,7 +86,16 @@ export function createReader(options: CreateReaderOptions = {}): Reader {
         const result = await client.init();
         if (!result) return null;
         const builtAgent = setSession(result.session)!;
-        const profile = await fetchProfileFor(result.session, builtAgent);
+        // The session itself is already good here (a real OAuth token) —
+        // don't let a failed profile fetch (a separate, transient AppView
+        // call: e.g. no AppView configured, as on a bare local test PDS, or
+        // a momentary hiccup right after the OAuth redirect) collapse a
+        // genuinely successful login back to "signed out". Fall back to the
+        // did as a placeholder handle; a later getProfile() call can fill in
+        // the real one once/if it succeeds.
+        const profile = await fetchProfileFor(result.session, builtAgent).catch(
+          (): ReaderProfile => ({ did: result.session.did, handle: result.session.did }),
+        );
         return { did: profile.did, handle: profile.handle, displayName: profile.displayName };
       })());
     },

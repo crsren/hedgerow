@@ -12,7 +12,6 @@ import { fileURLToPath } from "node:url";
 import { expect, test } from "@playwright/test";
 
 interface LocalNet {
-  HEDGEROW_APPVIEW_URL: string;
   seeded: { slug: string; title: string; anchor: { uri: string; cid: string } } | null;
 }
 
@@ -20,24 +19,12 @@ const localNet: LocalNet = JSON.parse(
   readFileSync(fileURLToPath(new URL("./.local-net.json", import.meta.url)), "utf8"),
 );
 
-test.beforeEach(async ({ page }) => {
-  // The comments island (apps/demo/src/components/CommentThread.tsx, owned by
-  // a colleague's branch) is hardcoded to fetch the public Bluesky AppView —
-  // see DEFAULT_APPVIEW in packages/comments/src/xrpc.ts. Rather than touch
-  // that component to make the AppView configurable, redirect its requests at
-  // the network level to our local shim, which serves the same XRPC methods
-  // computed off records that actually live on the local PDS. The island's
-  // code — and the @hedgerow/react parts it's built from — never knows the
-  // difference.
-  await page.route("https://public.api.bsky.app/xrpc/**", async (route) => {
-    const reqUrl = new URL(route.request().url());
-    const target = new URL(localNet.HEDGEROW_APPVIEW_URL);
-    target.pathname = reqUrl.pathname;
-    target.search = reqUrl.search;
-    const res = await page.request.fetch(target.toString(), { method: route.request().method() });
-    await route.fulfill({ response: res });
-  });
-});
+// No page.route() interception needed: apps/demo/src/components/CommentThread.tsx
+// now reads PUBLIC_HEDGEROW_APPVIEW_URL (see apps/demo/scripts/dev-net.mjs)
+// and passes it straight through as Comments.Root/Likes.Root's `appView`
+// prop, so serve.mjs spawning `astro dev` with that env var already points
+// the comments island at the local shim — the same code path production uses
+// against the real public AppView, just pointed elsewhere.
 
 test("home page renders the publication and documents from the local PDS", async ({ page }) => {
   await page.goto("/");

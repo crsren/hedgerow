@@ -69,13 +69,28 @@ export async function startDevNet({ log = console.log } = {}) {
     email: "bob@dev-net.local",
     password: SEED_PASSWORD,
   });
+  // carol.test is the READER for e2e OAuth-login/reply tests (apps/demo/e2e/
+  // oauth-reply.spec.ts) — deliberately neither the site owner (alice) nor the
+  // seeded commenter (bob), a fresh account with no prior activity.
+  const carol = new AtpAgent({ service: pdsUrl });
+  const carolAccount = await carol.createAccount({
+    handle: "carol.test",
+    email: "carol@dev-net.local",
+    password: SEED_PASSWORD,
+  });
 
+  // A live Map the shim reads on every request (see appview-shim.mjs) — carol
+  // must be in here too so a reply SHE later posts (via a real OAuth session,
+  // not this script) shows up when the shim walks reply.parent.uri backlinks
+  // across "every known account".
   const accounts = new Map([
     [aliceAccount.data.did, { handle: "alice.test", displayName: "Alice" }],
     [bobAccount.data.did, { handle: "bob.test", displayName: "Bob" }],
+    [carolAccount.data.did, { handle: "carol.test", displayName: "Carol" }],
   ]);
   log(`  alice.test -> ${aliceAccount.data.did}`);
   log(`  bob.test   -> ${bobAccount.data.did}`);
+  log(`  carol.test -> ${carolAccount.data.did} (reader, e2e only)`);
 
   // Publish the ACTUAL demo posts through the real publish package. Strip any
   // frontmatter bskyPostUri/bskyPostRef first: those (see apps/demo/posts/)
@@ -113,16 +128,26 @@ export async function startDevNet({ log = console.log } = {}) {
   const shimServer = await shim.listen(0);
   log(`  AppView shim  ${shimServer.url}`);
 
-  // Env vars that point apps/demo/src/lib/site.ts's live mode at this
-  // network. HEDGEROW_APPVIEW_URL isn't read by site.ts (comments fetch
-  // client-side); it's exposed here for whatever wires the comments island to
-  // the shim (see apps/demo/e2e/read-path.spec.ts for the Playwright route).
+  // Env vars that point apps/demo/src/lib/site.ts's live mode (server-side —
+  // astro dev/build/SSR) at this network.
+  //
+  // PUBLIC_-prefixed ones are the client-side counterpart: Astro (via Vite)
+  // only exposes PUBLIC_-prefixed env vars to browser code through
+  // import.meta.env, so these are what apps/demo/src/components/CommentThread.tsx
+  // reads to point createReader() and Comments.Root/Likes.Root's `appView` at
+  // this local network instead of the production public AppView. All four are
+  // read with the exact same env-absent-means-default-behavior contract as the
+  // server-side ones: apps/demo/src/lib/site.ts's HEDGEROW_HANDLE.
   const env = {
     HEDGEROW_HANDLE: "alice.test",
     HEDGEROW_PDS_URL: pdsUrl,
     HEDGEROW_PLC_URL: plcUrl,
     HEDGEROW_RESOLVE_HANDLE_SERVICE: pdsUrl,
     HEDGEROW_APPVIEW_URL: shimServer.url,
+    PUBLIC_HEDGEROW_APPVIEW_URL: shimServer.url,
+    PUBLIC_HEDGEROW_HANDLE_RESOLVER: pdsUrl,
+    PUBLIC_HEDGEROW_PLC_URL: plcUrl,
+    PUBLIC_HEDGEROW_OAUTH_ALLOW_HTTP: "1",
   };
 
   return {
@@ -132,6 +157,11 @@ export async function startDevNet({ log = console.log } = {}) {
     accounts,
     publishResult: result,
     seeded: seeded ? { slug: seeded.slug, title: seeded.title, anchor } : null,
+    // The e2e reader account (apps/demo/e2e/oauth-reply.spec.ts) — a fresh
+    // account with no prior activity, distinct from alice (owner) and bob
+    // (seeded commenter). The password is a fixed local-only dev-net value,
+    // never a real credential (see SEED_PASSWORD above).
+    reader: { handle: "carol.test", password: SEED_PASSWORD, did: carolAccount.data.did },
     shim: shimServer,
     env,
     async close() {

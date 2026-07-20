@@ -64,6 +64,25 @@ describe("createReader — restore", () => {
     expect(result).toEqual({ did: PROFILE.did, handle: PROFILE.handle, displayName: PROFILE.displayName });
   });
 
+  it("still resolves a session (falling back to the did as handle) when the profile fetch fails", async () => {
+    // The session token itself is valid (a real OAuth login) — a getProfile
+    // failure is a separate, transient concern (e.g. no AppView to proxy to,
+    // as on a bare local test PDS) and must not make restore() look like the
+    // login itself failed.
+    const session = fakeSession();
+    const { client } = clientWithSession(session);
+    const agent: AgentLike = {
+      getProfile: vi.fn(async () => {
+        throw new Error("502 Bad Gateway");
+      }),
+      post: vi.fn(),
+    };
+    const reader = createReader({ createClient: () => client, createAgent: () => agent });
+
+    const result = await reader.restore();
+    expect(result).toEqual({ did: session.did, handle: session.did });
+  });
+
   it("runs the client's one-time init() only once across repeated restore() calls", async () => {
     const session = fakeSession();
     const { client, init } = clientWithSession(session);
@@ -92,7 +111,7 @@ describe("createReader — signIn", () => {
     const reader = createReader({ createClient: () => client });
 
     await expect(reader.signIn("chris.bsky.social")).rejects.toThrow(/resolved without redirecting/);
-    expect(signIn).toHaveBeenCalledWith("chris.bsky.social");
+    expect(signIn).toHaveBeenCalledWith("chris.bsky.social", { scope: "atproto transition:generic" });
   });
 
   it("propagates an abort/rejection from the client's signIn", async () => {
@@ -115,7 +134,10 @@ describe("createReader — signUp", () => {
     const reader = createReader({ createClient: () => client });
 
     await expect(reader.signUp()).rejects.toThrow(/resolved without redirecting/);
-    expect(signIn).toHaveBeenCalledWith("https://bsky.social", { prompt: "create" });
+    expect(signIn).toHaveBeenCalledWith("https://bsky.social", {
+      scope: "atproto transition:generic",
+      prompt: "create",
+    });
   });
 
   it("redirects to a custom service when given one", async () => {
@@ -123,7 +145,10 @@ describe("createReader — signUp", () => {
     const reader = createReader({ createClient: () => client });
 
     await expect(reader.signUp("https://example-pds.test")).rejects.toThrow(/resolved without redirecting/);
-    expect(signIn).toHaveBeenCalledWith("https://example-pds.test", { prompt: "create" });
+    expect(signIn).toHaveBeenCalledWith("https://example-pds.test", {
+      scope: "atproto transition:generic",
+      prompt: "create",
+    });
   });
 
   it("propagates an abort/rejection from the client's signIn", async () => {

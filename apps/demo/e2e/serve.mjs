@@ -18,11 +18,16 @@ const PORT = process.env.HEDGEROW_E2E_PORT ?? "4321";
 async function main() {
   const dn = await startDevNet({ log: (...args) => console.error("[dev-net]", ...args) });
 
-  // Specs read this to know the shim URL and which document got the seeded
-  // thread — see read-path.spec.ts.
+  // Specs read this to know the shim URL, which document got the seeded
+  // thread, and the e2e reader account's credentials — see read-path.spec.ts
+  // and oauth-reply.spec.ts.
   writeFileSync(
     LOCAL_NET_JSON,
-    JSON.stringify({ ...dn.env, seeded: dn.seeded, baseURL: `http://127.0.0.1:${PORT}` }, null, 2),
+    JSON.stringify(
+      { ...dn.env, seeded: dn.seeded, reader: dn.reader, baseURL: `http://127.0.0.1:${PORT}` },
+      null,
+      2,
+    ),
   );
 
   const astro = spawn(ASTRO_BIN, ["dev", "--port", PORT, "--host", "127.0.0.1"], {

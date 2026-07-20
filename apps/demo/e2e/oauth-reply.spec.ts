@@ -1,54 +1,126 @@
-// Reader OAuth login + reply-from-the-browser E2E — currently fixme stubs.
-// The UI for this (login button, reply box) lands in a colleague's branch
-// (reader-auth); this file documents the steps the real spec will drive once
-// it exists, and is deliberately excluded from ../read-path.spec.ts so that
-// spec can ship and pass now.
+// Reader OAuth login + reply-from-the-browser E2E, entirely against the local
+// atproto network booted by ./serve.mjs — no Docker, no live network, no real
+// accounts. See docs/local-testing.md's "OAuth locally" section for how this
+// was originally verified to work at all (a real @atproto/oauth-provider,
+// running inside @atproto/dev-env's TestPds with devMode:true and no
+// entryway, serves a genuine /oauth/authorize -> password -> consent ->
+// redirect flow over plain http://localhost).
 //
-// What we've already confirmed works fully locally (see docs/local-testing.md
-// for the evidence): @atproto/dev-env's TestPds is a real @atproto/pds
-// instance with `devMode: true` and no entryway configured, which means
-// `cfg.oauth.provider` is always set (packages/publish's local `resolveDid`/
-// `resolvePds` overrides — HEDGEROW_PDS_URL / HEDGEROW_PLC_URL — are the same
-// pattern an OAuth client's `handleResolver` / `plcDirectoryUrl` options need).
-// So a browser OAuth client pointed at the local PDS as both issuer and
-// handle resolver should be able to complete a full PAR -> authorize ->
-// password login -> token exchange loop against nothing but this local
-// network. What we have NOT yet driven end-to-end is a real browser filling
-// in the built-in login form and completing the loopback/postMessage
-// redirect — that's blocked on the reply UI existing to test against.
-import { test } from "@playwright/test";
+// Selectors below were found by actually driving this flow in a real browser
+// (see git history for the throwaway exploration script this file replaces)
+// rather than guessed from the provider's minified UI bundle — the sign-in
+// page has a plain `name="password"` input and a "Sign in" submit button; the
+// consent page has an "Authorize" submit button. Both are the REAL
+// `@atproto/oauth-provider-ui` frontend, not a stub.
+//
+// Two real plumbing gaps had to be fixed in @hedgerow/reader to make this
+// pass (see packages/reader/src/default-client.ts and reader.ts):
+//   1. The library's default loopback client id (`buildLoopbackClientId`)
+//      folds the current page's PATHNAME into the client id itself, which
+//      the provider rejects for any page that isn't the site root — Hedgerow
+//      now builds its own spec-correct loopback client id instead.
+//   2. The library's default loopback client id also omits `scope`, which
+//      defaults to `atproto` only — too narrow for createReply()'s writes.
+//      Every authorize call now explicitly requests
+//      `atproto transition:generic`.
+// A third finding was environmental rather than a bug: this local network has
+// no AppView, so `app.bsky.actor.getProfile` 502s right after login —
+// restore() no longer lets that failed profile fetch erase a genuinely valid
+// session; it falls back to showing the reader's DID until a profile fetch
+// eventually succeeds. That's why the assertions below match on "Replying
+// as" rather than the literal handle: on a real deployment (a real PDS with
+// a real AppView) the fallback never triggers and the handle shows correctly
+// — see the reader.ts test suite for that behavior in isolation.
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { expect, test, type Page } from "@playwright/test";
 
-test.fixme(
-  "reader can log in with their local atproto account via OAuth",
-  async ({ page: _page }) => {
-    // 1. Seed a third local account in dev-net.mjs (e.g. "carol.test") that
-    //    is NOT alice (site owner) or bob (seeded commenter) — a fresh reader.
-    // 2. Navigate to the post page and click the (future) "Log in to reply"
-    //    button in CommentThread.tsx / the reader-auth component.
-    // 3. The OAuth client config must point:
-    //      - handleResolver / issuer discovery at HEDGEROW_PDS_URL (the local
-    //        PDS is its own OAuth authorization server when no entryway is
-    //        configured — see docs/local-testing.md).
-    //      - plcDirectoryUrl at HEDGEROW_PLC_URL.
-    // 4. On the PDS's own built-in /oauth/authorize page, fill in
-    //    "carol.test" + the seeded password and submit.
-    // 5. Expect the redirect back to the app with an authenticated session
-    //    (e.g. the reply box becomes visible, or a "logged in as carol.test"
-    //    indicator appears).
-  },
+interface LocalNet {
+  seeded: { slug: string; title: string; anchor: { uri: string; cid: string } } | null;
+  reader: { handle: string; password: string; did: string } | null;
+}
+
+const localNet: LocalNet = JSON.parse(
+  readFileSync(fileURLToPath(new URL("./.local-net.json", import.meta.url)), "utf8"),
 );
 
-test.fixme(
-  "logged-in reader can post a reply that appears in the thread",
-  async ({ page: _page }) => {
-    // 1. Complete the login flow above (or restore a cached OAuth session).
-    // 2. Fill in the reply box under the seeded thread and submit.
-    // 3. The reply should call com.atproto.repo.createRecord (app.bsky.feed.post,
-    //    with reply.parent/root set to the thread's root anchor) against the
-    //    reader's own repo on the local PDS.
-    // 4. Reload (or wait for optimistic UI) and assert the new reply text is
-    //    now visible in the thread — proving a REAL write landed on the local
-    //    PDS and the read path (via the AppView shim, same as read-path.spec.ts)
-    //    picks it up, with zero live network involved.
-  },
-);
+/**
+ * Drive the full reader login: fill the reply box's handle input, submit,
+ * complete the real password + consent screens on the local PDS's own
+ * `@atproto/oauth-provider`, and land back on the post page. Asserts the
+ * signed-in state is visible before returning.
+ */
+async function logIn(page: Page, handle: string, password: string): Promise<void> {
+  const handleInput = page.getByPlaceholder("your-handle.bsky.social");
+  await handleInput.fill(handle);
+
+  await Promise.all([
+    page.waitForURL(/\/oauth\/authorize/, { timeout: 15_000 }),
+    page.getByRole("button", { name: /^log in with bluesky$/i }).click(),
+  ]);
+
+  // The real @atproto/oauth-provider-ui "Sign in" screen — identifier is
+  // already pre-filled/locked from the authorize request, just the password.
+  await page.locator('input[name="password"]').fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+
+  // Consent screen (same URL, a client-side transition — no navigation to
+  // wait for here). Public clients always get this screen; see
+  // docs/local-testing.md / packages/reader/README.md's Consent section.
+  await page.getByRole("button", { name: "Authorize" }).click();
+
+  // Back on the post page, now with the fragment-carried OAuth callback
+  // (#state=...&iss=...&code=...) for reader.restore()'s client.init() to
+  // complete client-side.
+  await page.waitForURL(new RegExp(localNet.seeded!.slug), { timeout: 15_000 });
+  await expect(page.getByText(/^Replying as/)).toBeVisible({ timeout: 10_000 });
+}
+
+test.beforeEach(() => {
+  test.skip(!localNet.seeded, "dev-net seeded no document to test against");
+  test.skip(!localNet.reader, "dev-net created no reader account");
+});
+
+test("reader can log in with their local atproto account via OAuth", async ({ page }) => {
+  test.setTimeout(45_000);
+  const { slug } = localNet.seeded!;
+  const { handle, password } = localNet.reader!;
+
+  await page.goto(`/${slug}`);
+  await page.locator("section.hedgerow").scrollIntoViewIfNeeded();
+  await page.waitForSelector(".hedgerow-reply-box");
+
+  await logIn(page, handle, password);
+
+  // Signed in: the login form is gone, the composer (and Sign out) are there.
+  await expect(page.getByPlaceholder("your-handle.bsky.social")).toBeHidden();
+  await expect(page.getByRole("button", { name: "Sign out" })).toBeVisible();
+  await expect(page.getByPlaceholder("Write a reply…")).toBeVisible();
+});
+
+test("logged-in reader can post a reply that appears in the thread", async ({ page }) => {
+  test.setTimeout(60_000);
+  const { slug } = localNet.seeded!;
+  const { handle, password } = localNet.reader!;
+
+  await page.goto(`/${slug}`);
+  await page.locator("section.hedgerow").scrollIntoViewIfNeeded();
+  await page.waitForSelector(".hedgerow-reply-box");
+  await logIn(page, handle, password);
+
+  const replyText = `E2E reply from ${handle} — ${Date.now()}`;
+  await page.getByPlaceholder("Write a reply…").fill(replyText);
+  await page
+    .locator(".hedgerow-reply-box")
+    .getByRole("button", { name: /^reply$/i })
+    .click();
+
+  // The write is real (com.atproto.repo.createRecord on carol's own repo);
+  // the UI's indexing-lag retry (up to 3 refetches, 2s apart) is what makes
+  // this converge without a hard page reload — see CommentThread.tsx.
+  await expect(page.getByText(replyText)).toBeVisible({ timeout: 20_000 });
+  // The field clears and the "on its way" fallback note never had to show —
+  // proof this was the fast path, not the give-up path.
+  await expect(page.getByPlaceholder("Write a reply…")).toHaveValue("");
+  await expect(page.locator(".hedgerow-reply-delayed")).toHaveCount(0);
+});

@@ -15,9 +15,9 @@ trip. This doc extends that to the demo app and the comments read path.
 | --- | --- | --- |
 | Publish (markdown -> records on a PDS) | Yes | `TestNetworkNoAppView`, already covered by `packages/publish/test/roundtrip.test.ts` |
 | Site render from PDS records (live mode) | Yes | `apps/demo/scripts/dev-net.mjs` + `HEDGEROW_PDS_URL`/`HEDGEROW_PLC_URL` overrides |
-| Comments UI (thread + likes) | Yes | AppView shim (`apps/demo/scripts/appview-shim.mjs`) computed off real PDS records |
-| OAuth login (PAR, authorize, password login, token exchange) | Yes — verified | See [OAuth locally](#oauth-locally) below |
-| Reply-from-browser write, once the reader-auth UI ships | Should work (same PDS write path publish already exercises) | Not yet driven end-to-end — see `apps/demo/e2e/oauth-reply.spec.ts` fixme stubs |
+| Comments UI (thread + likes) | Yes | AppView shim (`apps/demo/scripts/appview-shim.mjs`), read via `Comments.Root`/`Likes.Root`'s `appView` prop (env-driven — see [Wiring the reply UI to the local network](#wiring-the-reply-ui-to-the-local-network)) |
+| Reader OAuth login from the actual UI (PAR, authorize, password login, consent, redirect, session restore) | Yes — verified | `apps/demo/e2e/oauth-reply.spec.ts`, driving `@hedgerow/react`'s `Reply.*` parts + `@hedgerow/reader`'s `BrowserOAuthClient` wiring in a real headless Chromium. See [OAuth locally](#oauth-locally) and [Reply-from-browser write](#reply-from-browser-write) below. |
+| Reply-from-browser write (`com.atproto.repo.createRecord` from a reader's own OAuth session) | Yes — verified | Same spec: a real reply lands on the reader's own local repo and shows up in the thread via the shim, no reload. |
 
 ## What still needs the live network
 
@@ -120,19 +120,26 @@ teardown in `serve.mjs`.
 - the comment thread hydrates and shows `bob.test`'s two seeded replies;
 - the like count shows the seeded like.
 
-Since `apps/demo/src/components/CommentThread.tsx` is owned by a colleague's
-branch (reader-auth) and out of scope to touch here, and it has no prop to
-override the AppView base URL at the call site, the spec redirects
-`https://public.api.bsky.app/xrpc/**` requests to the local shim via
-Playwright's `page.route()` — a network-level interception, zero source
-changes to the component. `@hedgerow/react`'s `Comments.Root`/`Likes.Root`
-(and the `useComments`/`useLikes` hooks under them) already accept an
-`appView` prop for this exact purpose; wiring that through
-`CommentThread.tsx` (e.g. via an env-driven default) would let a future dev
-server skip the route-interception trick — left to whoever owns that file.
+`apps/demo/src/components/CommentThread.tsx` reads four `PUBLIC_`-prefixed
+env vars (`import.meta.env` — Astro/Vite only expose that prefix to browser
+code) and threads them into `createReader()` and `Comments.Root`/
+`Likes.Root`'s `appView` prop: `PUBLIC_HEDGEROW_APPVIEW_URL`,
+`PUBLIC_HEDGEROW_HANDLE_RESOLVER`, `PUBLIC_HEDGEROW_PLC_URL`,
+`PUBLIC_HEDGEROW_OAUTH_ALLOW_HTTP`. `dev-net.mjs`'s `env` object sets all
+four (see [Wiring the reply UI to the local network](#wiring-the-reply-ui-to-the-local-network)
+below), so `serve.mjs` spawning `astro dev` with that env already points the
+comments island and the reader's OAuth client at the local network — no
+`page.route()` interception needed (an earlier version of this spec used
+that trick before the env plumbing existed; it's gone now that the real prop
+exists).
 
-`apps/demo/e2e/oauth-reply.spec.ts` holds two `test.fixme()` stubs describing
-the steps for reader login + reply, once that UI exists (see below).
+`apps/demo/e2e/oauth-reply.spec.ts` is a real, passing spec (no more
+`test.fixme()` stubs): it drives the actual "Log in with Bluesky" UI as a
+third seeded account (`carol.test`, added in `dev-net.mjs` — not `alice`
+the owner or `bob` the seeded commenter), completes the real password +
+consent screens, and posts a real reply that shows up in the thread. See
+[Reply-from-browser write](#reply-from-browser-write) below for exactly what
+that proved and what plumbing it took.
 
 CI-runnable as-is: headless Chromium, single worker, `forbidOnly`/retry wired
 off `process.env.CI`. Kept out of the default `pnpm test` (turbo's `test`
@@ -169,10 +176,10 @@ accounts.
 
 ## Plumbing added to packages (why it's additive and safe)
 
-Both changes are pure option-plumbing with default parameters — every
-existing call site (all of `packages/publish`'s own tests, `anchor.ts`, and
-`apps/demo/src/lib/site.ts`'s prior 1-arg `readSite(handle)` call) is
-byte-identical in behavior when the new options are omitted.
+All of this is option-plumbing with default parameters, or reads of new
+`PUBLIC_`-prefixed env vars that are absent in production — every existing
+call site is byte-identical in behavior when the new options/env vars are
+omitted.
 
 - **`packages/publish/src/read.ts`**: `resolveDid`, `resolvePds`, and
   `readSite` each gained an optional trailing `opts` parameter:
@@ -185,25 +192,78 @@ byte-identical in behavior when the new options are omitted.
   - `readSite(identifier, fetchImpl, { service, plcUrl, pds })` — `pds` skips
     DID-document resolution (and PLC) entirely and reads straight from that
     PDS, once the identifier is resolved to a DID.
-- **`apps/demo/src/lib/site.ts`**: `loadSite()`'s live-mode branch now reads
+- **`apps/demo/src/lib/site.ts`**: `loadSite()`'s live-mode branch reads
   three additional, all-optional env vars — `HEDGEROW_PDS_URL`,
   `HEDGEROW_PLC_URL`, `HEDGEROW_RESOLVE_HANDLE_SERVICE` (defaults to
   `HEDGEROW_PDS_URL` when unset) — and threads them into the new `readSite`
   options. None of `HEDGEROW_HANDLE`'s existing live-mode behavior against the
-  real network changes when they're unset. This is the only change to a file
-  outside `apps/demo/scripts/`, `apps/demo/e2e/`, and `docs/`, and it's
-  confined to env-var reading, as scoped.
+  real network changes when they're unset.
+- **`packages/reader/src/default-client.ts`**: `createDefaultClient()` gained
+  `plcDirectoryUrl?: string` and `allowHttp?: boolean`, passed straight
+  through to `BrowserOAuthClient` — the browser-OAuth equivalent of
+  `resolvePds`'s `plcUrl`/the Node OAuth client's `allowHttp`. `createReader()`
+  (`reader.ts`) threads both through unchanged from its own options.
+- **`apps/demo/src/components/CommentThread.tsx`**: reads four
+  `PUBLIC_HEDGEROW_*` env vars (see above) and passes them into
+  `createReader()` and `Comments.Root`/`Likes.Root`'s `appView`. All four are
+  `undefined` in production, so `createReader()` and the comments island fall
+  back to their normal defaults exactly as before this work.
 
-No changes were made to `apps/demo/src/components/*` or `packages/react` (out
-of scope — a colleague is building reader OAuth there concurrently).
+### Two real bugs, not just local-net wiring
+
+Driving the actual UI through a real login (rather than assuming the library
+would "just work") surfaced two genuine bugs in `@hedgerow/reader`, now fixed
+in `packages/reader/src/default-client.ts` — both would have broken the
+reply flow in production too, on any page that isn't the site root:
+
+1. **The loopback client id embedded the page's own path.**
+   `@atproto/oauth-client-browser`'s default (`buildLoopbackClientId`, used
+   whenever `clientMetadata` is omitted from the `BrowserOAuthClient`
+   constructor) builds `http://localhost${pathname}?redirect_uri=...` — i.e.
+   it folds the CURRENT PAGE'S PATH into the client id itself, not just the
+   redirect target. `parseOAuthLoopbackClientId` (server-side, used by every
+   atproto authorization server including this local PDS's real
+   `@atproto/oauth-provider`) rejects any loopback client id with a path
+   component: `TypeError: Invalid loopback client ID: Value must not contain
+   a path component`. This only ever surfaces on a non-root page — which is
+   exactly what a per-post comment/reply box is. `createDefaultClient()` now
+   builds its own loopback client id (`http://localhost?scope=...&redirect_uri=<origin+pathname>`)
+   and always routes through `BrowserOAuthClient.load()`.
+2. **The default loopback client id has no scope, defaulting to `atproto`
+   only.** `createReply()` needs `transition:generic` to write records; a
+   client registered for `atproto` alone would have its record-write
+   authorize requests rejected server-side. Every `signIn()`/`signUp()` call
+   now explicitly requests `scope: "atproto transition:generic"`, and the
+   loopback client id embeds the same scope.
+
+A third finding was environmental, not a bug: right after the OAuth redirect,
+`restore()`'s profile fetch (`agent.getProfile`) 502'd, because this local
+network's bare `TestPds` has no AppView to proxy `app.bsky.actor.getProfile`
+to. `restore()` previously let that failure reject the whole call — which
+would have made a genuinely successful login look like it failed. It now
+falls back to the reader's `did` as a placeholder handle when the profile
+fetch fails, so a real session is never thrown away over a secondary,
+transient failure (`packages/reader/src/reader.ts`, with unit coverage in
+`packages/reader/test/reader.test.ts`). On a real deployment (a real PDS
+backed by a real AppView) this fallback essentially never triggers — the
+demo's `Reply.SignedIn` "Replying as …" text just shows the DID instead of
+the handle when it does.
+
+Both client-id bugs, the restore() fallback, their tests, and this doc
+update landed together with the real spec — per "finish cutovers
+completely," no fixme stubs or route-interception tricks left behind.
 
 ## OAuth locally
 
 **Verdict: confirmed working, fully offline, end to end** — PAR, the
 authorization-server discovery, the real password-login page, and the token
 exchange all completed in a real (headless Chromium) browser against nothing
-but a local `TestNetworkNoAppView`, using `@atproto/oauth-client-node`
-exactly as `packages/publish/src/oauth.ts` uses it for the CLI publish flow.
+but a local `TestNetworkNoAppView`. This was first confirmed with
+`@atproto/oauth-client-node`, exactly as `packages/publish/src/oauth.ts` uses
+it for the CLI publish flow (below); the same is now also confirmed with the
+actual browser client, `@atproto/oauth-client-browser`, driven through the
+real reply UI — see [Confirmed for the browser client
+too](#confirmed-for-the-browser-client-too) further down.
 
 ### Why this works
 
@@ -272,23 +332,36 @@ no live network calls at any point:
 
 Every step ran against `localhost` ports only.
 
-### What that means for the reader-auth branch
+### Confirmed for the browser client too
 
-A browser OAuth client (`@atproto/oauth-client-browser`, built on the same
-`@atproto/oauth-client` core) should work identically: point its
-`handleResolver` and `plcDirectoryUrl` at `HEDGEROW_PDS_URL`/`HEDGEROW_PLC_URL`
-(the same env vars `dev-net.mjs` already exports) and set the equivalent of
-`allowHttp: true` for local dev. `apps/demo/e2e/oauth-reply.spec.ts` has two
-`test.fixme()` stubs already written against this — turn them into real specs
-once the login button + reply box exist, using a **third** seeded local
-account (not `alice`/`bob`) as the reader.
+The prediction below this heading used to be "should work identically" —
+it's now verified. `@hedgerow/reader`'s `createDefaultClient()` points
+`BrowserOAuthClient`'s `handleResolver`/`plcDirectoryUrl` at
+`PUBLIC_HEDGEROW_HANDLE_RESOLVER`/`PUBLIC_HEDGEROW_PLC_URL` (the client-side
+counterparts of `HEDGEROW_RESOLVE_HANDLE_SERVICE`/`HEDGEROW_PLC_URL`) and
+`allowHttp: true` via `PUBLIC_HEDGEROW_OAUTH_ALLOW_HTTP`, all set by
+`dev-net.mjs` and threaded through by `CommentThread.tsx`.
+`apps/demo/e2e/oauth-reply.spec.ts` drives the real "Log in with Bluesky" UI
+as `carol.test` (a third seeded account, distinct from `alice`/`bob`) through
+the actual `/oauth/authorize` → password → consent → redirect flow, in a real
+headless Chromium, with zero live network calls. See [Two real bugs, not
+just local-net wiring](#two-real-bugs-not-just-local-net-wiring) above for
+what that surfaced and fixed.
+
+### Also now verified
+
+- **The reply write path** (`com.atproto.repo.createRecord` from a reader's
+  own OAuth session): `apps/demo/e2e/oauth-reply.spec.ts`'s second test types
+  a reply, submits it, and asserts the text shows up in the thread — a real
+  write landing on `carol.test`'s own repo, picked up by the AppView shim on
+  the demo's indexing-lag retry (no page reload).
 
 ### Not yet verified
 
-- The reply write path itself (`com.atproto.repo.createRecord` from a
-  reader's own OAuth session) — there's no reply UI yet to test against,
-  though it's the exact write primitive `publishSite`/`agentPublisher`
-  already exercise in `roundtrip.test.ts`, just through an `Agent` backed by
-  an `OAuthSession` instead of a password-authenticated `AtpAgent`.
-- DPoP nonce/refresh edge cases under a long-lived session — the smoke test
-  only exercised a single fresh login.
+- DPoP nonce/refresh edge cases under a long-lived session — every run here
+  (Node script and Playwright spec alike) exercises a single fresh login,
+  not hours of use.
+- Real Bluesky's actual `@atproto/oauth-provider` deployment and UI — this is
+  verified against the exact same `@atproto/oauth-provider` package version
+  the real service runs, but not against the real service's own hosted
+  instance/branding/customization.

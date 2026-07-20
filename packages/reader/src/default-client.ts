@@ -15,6 +15,34 @@ import type { AgentLike, OAuthClientLike, OAuthSessionLike } from "./client-type
  */
 export const DEFAULT_HANDLE_RESOLVER = "https://public.api.bsky.app";
 
+/** identity + generic record writes — createReply() needs the latter. Same
+ * value `packages/publish/src/oauth.ts`'s Node CLI login requests. */
+const ATPROTO_SCOPE = "atproto transition:generic";
+
+/**
+ * Build a spec-correct loopback client id for the current page.
+ *
+ * `@atproto/oauth-client-browser`'s own default (used when `clientMetadata`
+ * is omitted from the `BrowserOAuthClient` constructor) calls
+ * `buildLoopbackClientId(window.location)`, which — for any page NOT at the
+ * site root — folds `location.pathname` into the CLIENT ID itself (not just
+ * the redirect_uri): `http://localhost/some/page?redirect_uri=...`. The
+ * server-side parser (`parseOAuthLoopbackClientId`) rejects any loopback
+ * client id with a path component ("Value must not contain a path
+ * component"), so that default only actually works from `/`. Hedgerow's demo
+ * (and any real consumer) mounts the reply box on ordinary content pages, so
+ * we build our own — `http://localhost` with ONLY a query string, scope
+ * embedded explicitly (the library's default omits it, which would silently
+ * register a client scoped to `atproto` only, too narrow for `createReply`'s
+ * writes) and `redirect_uri` set to the current page (origin + pathname, no
+ * query/hash) so the OAuth redirect lands back on the same content page.
+ */
+function loopbackClientId(): string {
+  const redirectUri = `${window.location.origin}${window.location.pathname}`;
+  const params = new URLSearchParams({ scope: ATPROTO_SCOPE, redirect_uri: redirectUri });
+  return `http://localhost?${params.toString()}`;
+}
+
 export interface DefaultClientOptions {
   /**
    * URL of a hosted `client-metadata.json`, required for a real deployment.
@@ -23,19 +51,41 @@ export interface DefaultClientOptions {
    */
   clientId?: string;
   handleResolver?: string;
+  /**
+   * Override the PLC directory base (default `https://plc.directory`) —
+   * for testing against a local atproto network (`@atproto/dev-env`'s
+   * `TestNetworkNoAppView`, e.g. via a local PDS's own PLC), not needed
+   * against the real network.
+   */
+  plcDirectoryUrl?: string;
+  /**
+   * Allow the client's authorization-server/resource metadata resolvers (and
+   * `did:web` resolution) to talk to `http://` endpoints. Required for local
+   * testing against a `http://localhost:<port>` authorization server (a real
+   * deployment's issuer is always `https://`, so this stays `false`/unset in
+   * production). See `docs/local-testing.md`.
+   */
+  allowHttp?: boolean;
 }
 
 /**
  * Build the real `BrowserOAuthClient`. With `clientId`, fetches the hosted
- * client-metadata document via `BrowserOAuthClient.load`. Without one, omits
- * `clientMetadata` entirely — the library then derives the atproto loopback
- * client id from `window.location`, which only resolves on a loopback origin.
+ * client-metadata document via `BrowserOAuthClient.load`. Without one, builds
+ * a spec-correct loopback client id for the current page (see
+ * {@link loopbackClientId}) and loads that instead — this only resolves on a
+ * loopback origin (127.0.0.1 / [::1]).
  */
 export async function createDefaultClient(opts: DefaultClientOptions): Promise<OAuthClientLike> {
   const handleResolver = opts.handleResolver ?? DEFAULT_HANDLE_RESOLVER;
-  return opts.clientId
-    ? BrowserOAuthClient.load({ clientId: opts.clientId, handleResolver })
-    : new BrowserOAuthClient({ handleResolver });
+  const rest = {
+    ...(opts.plcDirectoryUrl !== undefined ? { plcDirectoryUrl: opts.plcDirectoryUrl } : {}),
+    ...(opts.allowHttp !== undefined ? { allowHttp: opts.allowHttp } : {}),
+  };
+  return BrowserOAuthClient.load({
+    clientId: opts.clientId ?? loopbackClientId(),
+    handleResolver,
+    ...rest,
+  });
 }
 
 /** Build the real `Agent`, authenticated with the given OAuth session. */
