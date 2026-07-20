@@ -1,8 +1,16 @@
 ---
+import MarkdownIt from "markdown-it";
 import Base from "../layouts/Base.astro";
 import { loadSite, slugOf } from "../lib/site";
 import CommentThread from "../components/CommentThread";
 import type { DocumentRecord } from "@hedgerow/publish";
+
+// html: false (the default) is the sanitization here: raw HTML in the
+// markdown source is escaped as text rather than passed through, so an
+// edited-via-Tiptap (or hand-authored) post can't smuggle a <script>/<style>
+// tag into the rendered page. The content is author-owned (their own signed
+// PDS record), but there's no reason to trust it more than that.
+const md = new MarkdownIt({ linkify: true });
 
 export async function getStaticPaths() {
   const { documents } = await loadSite();
@@ -18,6 +26,12 @@ interface Props {
   bskyPostUri: string | null;
 }
 const { doc, recordUri, bskyPostUri } = Astro.props;
+
+// SLIMS-64: prefer the rich `content` union's markdown member, rendered to
+// HTML server-side, when present — falling back to textContent's plaintext
+// paragraphs (exactly as before) for documents that only carry the plain
+// mirror (older records, or a loose standard.site document from elsewhere).
+const bodyHtml = doc.content?.markdown ? md.render(doc.content.markdown) : null;
 
 // textContent is plaintext; the only structure it carries is paragraph breaks
 // (double newlines). Split those back into <p> elements — single newlines within
@@ -54,7 +68,7 @@ const dateFmt = new Intl.DateTimeFormat("en", {
     }
 
     <div class="body">
-      {paragraphs.map((p) => <p>{p}</p>)}
+      {bodyHtml ? <Fragment set:html={bodyHtml} /> : paragraphs.map((p) => <p>{p}</p>)}
     </div>
   </article>
 

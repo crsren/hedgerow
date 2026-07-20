@@ -50,4 +50,31 @@ export interface ProfileView {
 export interface AgentLike {
   getProfile(params: { actor: string }): Promise<{ data: ProfileView }>;
   post(record: Record<string, unknown>): Promise<{ uri: string; cid: string }>;
+  /**
+   * The nested `com.atproto.repo.*` XRPC methods (SLIMS-64's `asPublisher()`)
+   * — the real `Agent` already exposes this shape (it's what
+   * `packages/publish/src/auth.ts`'s `agentPublisher` adapts too), so
+   * `createDefaultAgent`'s `new Agent(session)` satisfies this with no casts.
+   * Optional here so a minimal fake `AgentLike` (getProfile/post only, as
+   * used by tests that never call `asPublisher()`) doesn't need to stub it;
+   * `asPublisher()` itself requires a real one at runtime.
+   */
+  com?: {
+    atproto: {
+      repo: {
+        putRecord(params: {
+          repo: string;
+          collection: string;
+          rkey: string;
+          record: Record<string, unknown>;
+        }): Promise<{ data: { uri: string; cid: string } }>;
+        getRecord(params: {
+          repo: string;
+          collection: string;
+          rkey: string;
+        }): Promise<{ data: { value: Record<string, unknown> } }>;
+        deleteRecord(params: { repo: string; collection: string; rkey: string }): Promise<unknown>;
+      };
+    };
+  };
 }

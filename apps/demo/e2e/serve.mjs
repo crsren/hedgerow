@@ -19,12 +19,18 @@ async function main() {
   const dn = await startDevNet({ log: (...args) => console.error("[dev-net]", ...args) });
 
   // Specs read this to know the shim URL, which document got the seeded
-  // thread, and the e2e reader account's credentials — see read-path.spec.ts
-  // and oauth-reply.spec.ts.
+  // thread, and the e2e reader/author accounts' credentials — see
+  // read-path.spec.ts, oauth-reply.spec.ts, and edit.spec.ts.
   writeFileSync(
     LOCAL_NET_JSON,
     JSON.stringify(
-      { ...dn.env, seeded: dn.seeded, reader: dn.reader, baseURL: `http://127.0.0.1:${PORT}` },
+      {
+        ...dn.env,
+        seeded: dn.seeded,
+        reader: dn.reader,
+        author: dn.author,
+        baseURL: `http://127.0.0.1:${PORT}`,
+      },
       null,
       2,
     ),

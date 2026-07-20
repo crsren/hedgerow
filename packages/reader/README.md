@@ -66,6 +66,7 @@ interface Reader {
   signOut(): Promise<void>;
   getProfile(): Promise<ReaderProfile | null>;  // did, handle, displayName, avatar — always hits the network
   createReply(input: CreateReplyInput): Promise<StrongRef>;
+  asPublisher(): PublisherLike;  // throws immediately if signed out
 }
 
 interface ReaderSession { did: string; handle: string; displayName?: string }
@@ -76,7 +77,27 @@ interface CreateReplyInput {
   parent: StrongRef;  // the post being replied to directly
   text: string;       // no facets (mentions/links/hashtags) in v1
 }
+interface PublisherLike {
+  did: string;
+  putRecord(collection: string, rkey: string, record: Record<string, unknown>): Promise<{ uri: string; cid: string }>;
+  getRecord(collection: string, rkey: string): Promise<Record<string, unknown> | null>;  // null if absent
+  deleteRecord(collection: string, rkey: string): Promise<void>;
+}
 ```
+
+### Writing your own records: `asPublisher()`
+
+A signed-in reader isn't just a commenter — on your own page, the same session can be the site's *author*, editing their own records. `asPublisher()` adapts the current session to `{ did, putRecord, getRecord, deleteRecord }`, the exact structural shape [`@hedgerow/publish`](../publish)'s `Publisher` interface uses (duck-typed, not imported — this package never depends on `@hedgerow/publish`; see [`docs/architecture.md`](../../docs/architecture.md)'s package-dependency rules):
+
+```ts
+const session = await reader.restore();
+if (session) {
+  const publisher = reader.asPublisher(); // throws if called while signed out
+  await publisher.putRecord("site.standard.document", rkey, updatedRecord);
+}
+```
+
+The three methods close over the live session, so a `Publisher` built before a later `signOut()` correctly starts throwing on use afterward too, rather than silently keeping a stale session alive. `apps/demo`'s `/edit` route is the reference consumer: the signed-in author edits a `site.standard.document` with [`@hedgerow/react`](../react)'s `Editor.*` parts and saves it via `asPublisher().putRecord(...)`.
 
 `restore()` is the only call you need on page load: it transparently handles both "returning visitor with a cached session" and "just landed back from the OAuth redirect" — the underlying `BrowserOAuthClient.init()` distinguishes them internally. It's safe to call more than once (e.g. a component mounting twice under React Strict Mode); later calls reuse the first call's result rather than re-running the OAuth client's one-time init.
 

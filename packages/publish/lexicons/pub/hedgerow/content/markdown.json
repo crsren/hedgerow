@@ -1,0 +1,33 @@
+{
+  "id": "pub.hedgerow.content.markdown",
+  "defs": {
+    "main": {
+      "type": "object",
+      "description": "Rich document body as CommonMark/GFM-flavored markdown. A member of site.standard.document's open `content` union (SLIMS-64): the document record's `textContent` field always carries a plaintext mirror alongside this, so a standard.site reader with no knowledge of this lexicon still renders the body.",
+      "required": [
+        "markdown"
+      ],
+      "properties": {
+        "markdown": {
+          "type": "string",
+          "maxLength": 1000000,
+          "maxGraphemes": 100000,
+          "description": "The document body, as markdown source."
+        },
+        "blobs": {
+          "type": "array",
+          "items": {
+            "type": "blob",
+            "accept": [
+              "image/*"
+            ],
+            "maxSize": 5000000
+          },
+          "description": "Blobs referenced by embedded content (e.g. images) in the markdown. Unused in v1 — reserved so a future version can pin embedded media without a schema migration."
+        }
+      }
+    }
+  },
+  "$type": "com.atproto.lexicon.schema",
+  "lexicon": 1
+}

@@ -2,6 +2,7 @@
 import matter from "gray-matter";
 import {
   DOCUMENT_NSID,
+  MARKDOWN_CONTENT_NSID,
   PUBLICATION_NSID,
   type DocumentRecord,
   type PublicationRecord,
@@ -112,6 +113,11 @@ export function documentRecord(post: ParsedPost, opts: DocumentOptions): Documen
     ...(post.description ? { description: post.description } : {}),
     ...(post.tags ? { tags: post.tags } : {}),
     ...(post.bskyPostRef ? { bskyPostRef: post.bskyPostRef } : {}),
+    // SLIMS-64: the file-based publish path always has markdown source
+    // (`post.body`), so it always emits the rich `content` member alongside
+    // its plaintext mirror — every consumer still gets a renderable body via
+    // textContent even if it doesn't know the content union's markdown member.
+    content: { $type: MARKDOWN_CONTENT_NSID, markdown: post.body },
     textContent: toPlainText(post.body),
   };
 }

@@ -28,6 +28,28 @@ export interface CreateReplyInput {
   text: string;
 }
 
+/**
+ * Structural mirror of `@hedgerow/publish`'s `Publisher` contract
+ * (`packages/publish/src/auth.ts`) — SLIMS-64's `Reader.asPublisher()` lets a
+ * signed-in reader write records (e.g. saving an edited `site.standard.document`
+ * from the demo's `/edit` route) through the SAME shape `publishSite` and
+ * `@hedgerow/react`'s `Editor.*` expect. Duck-typed, not imported: per
+ * docs/architecture.md's package-dependency rules, `@hedgerow/reader` must
+ * never depend on `@hedgerow/publish` (read/reader vs. write/author are kept
+ * decoupled) — the two packages just happen to agree on this tiny shape.
+ */
+export interface PublisherLike {
+  did: string;
+  putRecord(
+    collection: string,
+    rkey: string,
+    record: Record<string, unknown>,
+  ): Promise<{ uri: string; cid: string }>;
+  /** Existing record value, or null if absent/not found. */
+  getRecord(collection: string, rkey: string): Promise<Record<string, unknown> | null>;
+  deleteRecord(collection: string, rkey: string): Promise<void>;
+}
+
 export interface Reader {
   /**
    * Silently resume a session: restores the last-used one, or — when the page
@@ -71,4 +93,15 @@ export interface Reader {
    * PDS. Throws when there is no active session.
    */
   createReply(input: CreateReplyInput): Promise<StrongRef>;
+  /**
+   * Adapt the signed-in reader's session to a {@link PublisherLike} — the
+   * reader writing/editing records on THEIR OWN repo (SLIMS-64: the demo's
+   * `/edit` author flow uses this to save a `site.standard.document` via
+   * `putRecord`, the same shape `@hedgerow/publish`'s `publishSite` writes
+   * through). Throws immediately when called while signed out — unlike
+   * {@link Reader.createReply}, which only throws when actually invoked, this
+   * fails at construction time since a Publisher with no identity behind it
+   * isn't a meaningful object to hand around.
+   */
+  asPublisher(): PublisherLike;
 }

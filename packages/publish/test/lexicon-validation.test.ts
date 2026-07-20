@@ -11,6 +11,7 @@ import type { LexiconDoc } from "@atproto/lexicon";
 import { beforeAll, describe, expect, it } from "vitest";
 import {
   DOCUMENT_NSID,
+  MARKDOWN_CONTENT_NSID,
   PUBLICATION_NSID,
   documentRecord,
   parsePost,
@@ -49,6 +50,11 @@ describe("vendored lexicon documents", () => {
     const lexicons = new Lexicons(loadLexiconDocs());
     expect(lexicons.get(PUBLICATION_NSID)).toBeDefined();
     expect(lexicons.get(DOCUMENT_NSID)).toBeDefined();
+  });
+
+  it("includes the pub.hedgerow.content.markdown content union member (SLIMS-64)", () => {
+    const lexicons = new Lexicons(loadLexiconDocs());
+    expect(lexicons.get(MARKDOWN_CONTENT_NSID)).toBeDefined();
   });
 });
 
@@ -91,6 +97,40 @@ Here is some **markdown** with a [link](https://example.com) and \`code\`.
         "at://did:plc:abc123/site.standard.publication/3jt5vlkbqm225",
       updatedAt: "2026-07-19T12:00:00.000Z",
     });
+    expect(() =>
+      lexicons.assertValidRecord(DOCUMENT_NSID, record),
+    ).not.toThrow();
+  });
+
+  it("documentRecord's rich content member (pub.hedgerow.content.markdown) validates on its own, and passes as part of the whole document (SLIMS-64)", () => {
+    const post = parsePost(
+      `---
+title: "Rich Body"
+slug: rich-body
+publishedAt: 2026-07-19T10:00:00.000Z
+---
+Some **markdown** body.
+`,
+      "rich-body",
+    );
+    const record = documentRecord(post, {
+      siteUri: "at://did:plc:abc123/site.standard.publication/3jt5vlkbqm225",
+    });
+
+    expect(record.content).toEqual({
+      $type: MARKDOWN_CONTENT_NSID,
+      markdown: "Some **markdown** body.",
+    });
+    // textContent is always mirrored alongside the rich content member.
+    expect(record.textContent).toBe("Some markdown body.");
+
+    // pub.hedgerow.content.markdown is an object def (not a record — no
+    // `key`), so it's validated via `.validate()` rather than
+    // `.assertValidRecord()` (which requires a record-type def).
+    expect(lexicons.validate(MARKDOWN_CONTENT_NSID, record.content).success).toBe(true);
+    // The document as a whole (content included) still validates — the
+    // lexicon's `content` field is an open union, so an unlisted member is
+    // accepted as long as it carries a $type.
     expect(() =>
       lexicons.assertValidRecord(DOCUMENT_NSID, record),
     ).not.toThrow();

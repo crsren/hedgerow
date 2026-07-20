@@ -38,6 +38,13 @@ import {
   SignedOut as ReplySignedOut,
   ErrorMessage as ReplyError,
 } from "./reply";
+import {
+  Root as EditorRoot,
+  Title as EditorTitle,
+  Body as EditorBody,
+  Save as EditorSave,
+  Status as EditorStatusPart,
+} from "./editor";
 
 /**
  * Comment thread parts. `Root` provides state; the rest read it. `Item` is the
@@ -89,10 +96,27 @@ export const Reply = {
   Error: ReplyError,
 } as const;
 
+/**
+ * Document editor parts (SLIMS-64): `Root` takes `document` (the loaded
+ * record's editable fields, or `null` while loading) + `onSave` (both
+ * injected — no dependency on @hedgerow/publish, @hedgerow/reader, or any
+ * editor library) and runs the dirty/save state machine; the rest read it.
+ * `Body` is a headless SLOT (defaults to a plain `<textarea>`) — mount a real
+ * rich-text editor (e.g. Tiptap, app-land only) via its `render` prop.
+ */
+export const Editor = {
+  Root: EditorRoot,
+  Title: EditorTitle,
+  Body: EditorBody,
+  Save: EditorSave,
+  Status: EditorStatusPart,
+} as const;
+
 // ── Hooks (the headless core; usable without any component) ───────────────────
 export { useComments } from "./useComments";
 export { useLikes } from "./useLikes";
 export { useReply } from "./useReply";
+export { useEditor } from "./useEditor";
 export { useCommentNode } from "./hooks";
 export {
   useCommentsContext,
@@ -101,6 +125,7 @@ export {
   useLikesContext,
   useLikeItemContext,
   useReplyContext,
+  useEditorContext,
 } from "./context";
 
 // ── Render primitive (for building your own custom parts) ─────────────────────
@@ -176,6 +201,20 @@ export type {
   ReplyErrorProps,
 } from "./reply";
 export type { ReplyStatus, ReplySession, UseReplyOptions, UseReplyReturn } from "./useReply";
+export type {
+  EditorRootState,
+  EditorRootProps,
+  EditorTitleState,
+  EditorTitleProps,
+  EditorBodySlot,
+  EditorBodyState,
+  EditorBodyProps,
+  EditorSaveState,
+  EditorSaveProps,
+  EditorStatusState,
+  EditorStatusProps,
+} from "./editor";
+export type { EditorFields, EditorStatus, UseEditorOptions, UseEditorReturn } from "./useEditor";
 
 // Re-export the read core's public shapes so consumers need only one import.
 export {

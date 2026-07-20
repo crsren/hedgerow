@@ -1,0 +1,53 @@
+---
+// SLIMS-64: /edit only makes sense in LIVE mode (HEDGEROW_HANDLE set — see
+// apps/demo/src/lib/site.ts's loadSite()). There's no PDS to sign in to or
+// save back to in local-markdown mode, so this guard is evaluated
+// server-side (process.env, same check loadSite() itself makes) rather than
+// letting the island mount and fail confusingly.
+import Base from "../layouts/Base.astro";
+import EditorIsland from "../components/EditorIsland";
+
+const isLive = Boolean(process.env.HEDGEROW_HANDLE);
+---
+
+<Base title="Edit — Hedgerow Demo">
+  <p class="back"><a href="/">← All posts</a></p>
+
+  {
+    isLive ? (
+      <EditorIsland client:load />
+    ) : (
+      <div class="edit-local-notice">
+        <h1>Editing needs live mode</h1>
+        <p>
+          /edit reads and writes real <code>site.standard.document</code> records
+          on a PDS through a signed-in author's own OAuth session, so it only
+          makes sense when the demo is running against a real identity
+          (<code>HEDGEROW_HANDLE</code> set). In local-markdown mode there's no
+          PDS to sign in to or save back to — see{" "}
+          <a href="https://github.com/crsren/hedgerow/blob/main/docs/local-testing.md">
+            docs/local-testing.md
+          </a>{" "}
+          for how to run against a fully local atproto network instead.
+        </p>
+      </div>
+    )
+  }
+</Base>
+
+<style>
+  .back {
+    margin: 0 0 2.5rem;
+    font-size: 0.9rem;
+  }
+
+  .edit-local-notice h1 {
+    font-size: 1.4rem;
+  }
+  .edit-local-notice code {
+    background: var(--border);
+    border-radius: 0.25rem;
+    padding: 0.1rem 0.35rem;
+    font-size: 0.9em;
+  }
+</style>

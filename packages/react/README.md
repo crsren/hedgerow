@@ -4,6 +4,8 @@ Headless React components for showing live Bluesky comments and likes on your ow
 
 A third namespace, `Reply.*`, gives you a headless reply composer — but this package stays read-only and dependency-thin itself: `Reply.Root` takes `session`/`onSubmit` as plain props, so wiring up a real reader identity (e.g. [`@hedgerow/reader`](../reader)'s browser OAuth client) is entirely up to the consumer. See [Reply composer](#reply) below.
 
+A fourth namespace, `Editor.*`, gives you a headless document editor — `document`/`onSave` are plain props too, and `Editor.Body` doesn't ship a rich-text editor of its own (it defaults to a plain `<textarea>`); mount whatever editor you like into its slot. See [Editor](#editor) below.
+
 Built on [`@hedgerow/comments`](../comments), the zero-dependency read core. The `render` prop follows the [Base UI](https://base-ui.com) contract, so if you've used Base UI or Radix the composition model is the one you already know.
 
 ## Install
@@ -129,6 +131,14 @@ Every attribute a part emits, derived from the components:
 | `Reply.SignedIn` | `data-signed-in` | always present (renders only when `session` is non-null) |
 | `Reply.SignedOut` | `data-signed-out` | always present (renders only when `session` is null) |
 | `Reply.Error` | `data-error` | always present (renders only after a failed submit) |
+| `Editor.Root` | `data-status` | `loading` \| `editing` \| `dirty` \| `saving` \| `saved` \| `error` |
+| | `data-loading` / `data-dirty` / `data-saving` / `data-saved` / `data-error` | present per the matching status |
+| `Editor.Title` | `data-loading` / `data-saving` | present per state |
+| `Editor.Body` (default `<textarea>`) | `data-loading` / `data-saving` | present per state |
+| `Editor.Save` | `data-dirty` / `data-saving` | present per state |
+| | `data-disabled` | present unless dirty (or while saving) |
+| `Editor.Status` | `data-status` | same six values as `Editor.Root` |
+| | `data-error` | present when the last save failed |
 
 `Comments.Avatar`, `Comments.Content`, and `Comments.Timestamp` emit no `data-*` of their own — `Content` renders the body text, `Avatar` an `<img>` (with `alt` and `loading="lazy"`), and `Timestamp` a `<time>` with a machine-readable `dateTime`.
 
@@ -258,6 +268,34 @@ function CustomField() {
 }
 ```
 
+### `Editor.*`
+
+| Part | Default element | State | Notes |
+|------|-----------------|-------|-------|
+| `Editor.Root` | `form` | `{ status, isLoading, isDirty, isSaving, isSaved, isError }` | Provider + container. Takes `document` (`{ title, markdown } \| null` — `null` means still loading) and `onSave(fields) => Promise<void>` as props. A NEW `document` object resets the fields; re-rendering with the SAME reference never clobbers unsaved edits. Renders a `<form>` so both `Editor.Save` and a native submit trigger `save()`. |
+| `Editor.Title` | `input` | `{ value, isLoading, isSaving }` | The title, bound to `Editor.Root`'s state. Disabled while loading. |
+| `Editor.Body` | `textarea` | `{ value, isLoading, isSaving }` | A headless SLOT, not an editor. By default a plain `<textarea>` bound to the markdown string. Its `render` prop is DIFFERENT from every other part's: `render={(slot) => ...}` where `slot` is `{ value, onChange }` for the markdown string directly — not this library's usual `(props, state) => element` DOM-props contract — because a real rich-text editor component has nothing to do with spread DOM attributes. This is the mount point for e.g. Tiptap; `@hedgerow/react` never ships an editor. |
+| `Editor.Save` | `button` (`type="submit"`) | `{ isDirty, isSaving, isDisabled }` | Disabled unless the document is dirty (or while saving). Defaults to "Save" / "Saving…" text. |
+| `Editor.Status` | `div` (`role="alert"` when errored) | `{ status, error }` | Always rendered; defaults to a status label ("Unsaved changes", "Saving…", "Saved", "Couldn't save"). Exposes the save error via `state.error`. |
+
+`Editor.*` has **no dependency on `@hedgerow/publish`, `@hedgerow/reader`, or any editor library** — `document`/`onSave` are plain props, so you decide how to load a record and how to persist it. The demo (`apps/demo/src/components/EditorIsland.tsx`) is the reference: it reads via `@hedgerow/publish`'s browser-safe core and saves via `@hedgerow/reader`'s `asPublisher()`, with Tiptap (`@tiptap/react` + `@tiptap/starter-kit` + `tiptap-markdown`, app-land dependencies only) mounted into `Editor.Body`:
+
+```tsx
+import { Editor } from "@hedgerow/react";
+import TiptapMarkdownEditor from "./TiptapMarkdownEditor"; // wraps @tiptap/react
+
+function PostEditor({ document, onSave }: { document: { title: string; markdown: string } | null; onSave: (fields: { title: string; markdown: string }) => Promise<void> }) {
+  return (
+    <Editor.Root document={document} onSave={onSave}>
+      <Editor.Title />
+      <Editor.Body render={(slot) => <TiptapMarkdownEditor value={slot.value} onChange={slot.onChange} />} />
+      <Editor.Save />
+      <Editor.Status />
+    </Editor.Root>
+  );
+}
+```
+
 ## Hooks
 
 The components are a thin shell over three hooks. Use them directly when you want your own markup entirely.
@@ -344,7 +382,28 @@ interface UseReplyReturn {
 
 Unlike the other two, `useReply` fetches nothing — it's pure client-side composer state; `onSubmit` is where you plug in the actual write (e.g. [`@hedgerow/reader`](../reader)'s `createReply`).
 
-There's also `useCommentNode()` — the current `CommentNode` inside a `<Comments.Item>`, the escape hatch for building your own parts — and the context hooks `useCommentsContext()` / `useLikesContext()` / `useReplyContext()` (throw if used outside their respective `Root`).
+```ts
+function useEditor(options: UseEditorOptions): UseEditorReturn;
+
+interface UseEditorOptions {
+  document: { title: string; markdown: string } | null;  // null = still loading
+  onSave: (fields: { title: string; markdown: string }) => Promise<void>;
+}
+
+interface UseEditorReturn {
+  status: "loading" | "editing" | "dirty" | "saving" | "saved" | "error";
+  isLoading: boolean; isDirty: boolean; isSaving: boolean; isError: boolean;
+  error: unknown;
+  title: string; markdown: string;
+  setTitle: (title: string) => void;
+  setMarkdown: (markdown: string) => void;
+  save: () => Promise<void>;             // no-ops unless status is "dirty"
+}
+```
+
+Like `useReply`, `useEditor` fetches nothing — `document`/`onSave` are where you plug in the actual read/write (the demo uses `@hedgerow/publish`'s read core + `@hedgerow/reader`'s `asPublisher()`).
+
+There's also `useCommentNode()` — the current `CommentNode` inside a `<Comments.Item>`, the escape hatch for building your own parts — and the context hooks `useCommentsContext()` / `useLikesContext()` / `useReplyContext()` / `useEditorContext()` (throw if used outside their respective `Root`).
 
 ### Hooks-only example
 

@@ -121,4 +121,12 @@ describe("documentRecord", () => {
     expect(rec.textContent).toContain("The web used to be");
     expect(rec.textContent).not.toContain("**");
   });
+
+  it("also emits the rich pub.hedgerow.content.markdown member from the markdown source (SLIMS-64)", () => {
+    const post = parsePost(POST, "fallback");
+    const rec = documentRecord(post, { siteUri: "at://did:plc:x/site.standard.publication/abc" });
+    expect(rec.content).toEqual({ $type: "pub.hedgerow.content.markdown", markdown: post.body });
+    // The plaintext mirror is always present alongside the rich member.
+    expect(rec.textContent).toBe(toPlainText(post.body));
+  });
 });

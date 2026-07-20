@@ -166,6 +166,11 @@ export async function startDevNet({ log = console.log } = {}) {
     // (seeded commenter). The password is a fixed local-only dev-net value,
     // never a real credential (see SEED_PASSWORD above).
     reader: { handle: "carol.test", password: SEED_PASSWORD, did: carolAccount.data.did },
+    // The e2e AUTHOR account (apps/demo/e2e/edit.spec.ts, SLIMS-64) — alice.test
+    // IS the site owner (HEDGEROW_HANDLE above), so signing in as her on /edit
+    // is the account that actually owns the published documents. Same
+    // local-only SEED_PASSWORD as reader/carol above.
+    author: { handle: "alice.test", password: SEED_PASSWORD, did: aliceAccount.data.did },
     shim: shimServer,
     env,
     async close() {

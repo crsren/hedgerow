@@ -8,32 +8,9 @@
 // comment-thread.css; the article above stays fully static.
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Comments, Likes, Reply, mergeRefs, useCommentsContext, type CommentNode } from "@hedgerow/react";
-import { createReader, type ReaderSession } from "@hedgerow/reader";
+import type { ReaderSession } from "@hedgerow/reader";
+import { appViewOverride, reader, signupServiceOverride } from "../lib/reader";
 import "./comment-thread.css";
-
-// Local/test-network overrides, read from Astro's client-exposed env vars
-// (Vite only exposes PUBLIC_-prefixed vars to browser code via
-// import.meta.env — see apps/demo/scripts/dev-net.mjs, which sets these when
-// pointing the demo at a fully local atproto network, and
-// docs/local-testing.md). All four are undefined in production, in which
-// case createReader()/appView fall back to their normal defaults (the public
-// Bluesky AppView, a hosted/loopback OAuth client) — this override path never
-// changes production behavior.
-const appViewOverride = import.meta.env.PUBLIC_HEDGEROW_APPVIEW_URL as string | undefined;
-const handleResolverOverride = import.meta.env.PUBLIC_HEDGEROW_HANDLE_RESOLVER as string | undefined;
-const plcDirectoryUrlOverride = import.meta.env.PUBLIC_HEDGEROW_PLC_URL as string | undefined;
-const allowHttpOverride = import.meta.env.PUBLIC_HEDGEROW_OAUTH_ALLOW_HTTP === "1";
-const signupServiceOverride = import.meta.env.PUBLIC_HEDGEROW_SIGNUP_SERVICE as string | undefined;
-
-// One reader identity per page load. Cheap to construct — createReader() does
-// no OAuth-client/IndexedDB work until the first actual call (see the package
-// README) — so a module-level singleton is fine even though this module is
-// also evaluated during Astro's SSR pass for the initial HTML.
-const reader = createReader({
-  ...(handleResolverOverride ? { handleResolver: handleResolverOverride } : {}),
-  ...(plcDirectoryUrlOverride ? { plcDirectoryUrl: plcDirectoryUrlOverride } : {}),
-  ...(allowHttpOverride ? { allowHttp: true } : {}),
-});
 
 /** Depth-first search for a reply's uri in the (already sorted/filtered) tree. */
 function containsReply(nodes: readonly CommentNode[], uri: string): boolean {

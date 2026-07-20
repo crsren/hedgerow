@@ -114,6 +114,12 @@ Playwright waits for the astro server to respond, runs the specs, then
 SIGTERMs the whole tree (astro + the local network + the shim) — see the
 teardown in `serve.mjs`.
 
+Set `HEDGEROW_E2E_PORT` to run on a different port than the default `4321`
+(e.g. when something else — an interactive `dev:net` session, a concurrent
+e2e run — already has 4321 bound): both `playwright.config.ts` (`webServer.url`/
+`use.baseURL`) and `serve.mjs` (`astro dev --port`) read it, defaulting to
+`4321` when unset, so this is a no-op unless you set it.
+
 `apps/demo/e2e/read-path.spec.ts` proves the READ path end to end in a real
 (headless Chromium) browser:
 
@@ -145,7 +151,25 @@ third seeded account (`carol.test`, added in `dev-net.mjs` — not `alice`
 the owner or `bob` the seeded commenter), completes the real password +
 consent screens, and posts a real reply that shows up in the thread. See
 [Reply-from-browser write](#reply-from-browser-write) below for exactly what
-that proved and what plumbing it took.
+that proved and what plumbing it took. Its login-driving steps (fill the
+handle, click "Log in with Bluesky", complete the password + consent
+screens) are factored into `apps/demo/e2e/helpers.ts`'s `logInWithBluesky` —
+shared with `edit.spec.ts` below, since `/edit` (SLIMS-64) reuses the exact
+same login UI.
+
+`apps/demo/e2e/edit.spec.ts` (SLIMS-64) proves the AUTHOR edit path end to
+end: signs in on `/edit` as `alice.test` (the site owner — `dev-net.mjs`
+also returns her credentials as `author`, alongside the existing `reader`
+entry for `carol.test`), picks a document from the listed posts, edits its
+title and body through `@hedgerow/react`'s `Editor.*` parts (Tiptap mounted
+into `Editor.Body`'s slot), saves it (`reader.asPublisher().putRecord` — a
+real `com.atproto.repo.putRecord` on her own repo), then asserts BOTH that
+the public post page shows the new content on reload and that the record's
+`textContent` mirror was updated, fetched independently via
+`com.atproto.repo.getRecord`. It deliberately edits whichever demo post ISN'T
+`localNet.seeded` — that one carries the comment thread `read-path.spec.ts`
+and `oauth-reply.spec.ts` assert against, and all specs in a run share the
+same dev-net, so renaming it here would break those.
 
 CI-runnable as-is: headless Chromium, single worker, `forbidOnly`/retry wired
 off `process.env.CI`. Kept out of the default `pnpm test` (turbo's `test`

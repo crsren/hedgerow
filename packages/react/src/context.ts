@@ -7,6 +7,7 @@ import type { UseCommentsReturn } from "./useComments";
 import type { UseLikesReturn } from "./useLikes";
 import type { Like } from "@hedgerow/comments";
 import type { UseReplyReturn } from "./useReply";
+import type { UseEditorReturn } from "./useEditor";
 
 // ── Comments ─────────────────────────────────────────────────────────────────
 
@@ -70,5 +71,15 @@ export const ReplyRootContext = createContext<UseReplyReturn | null>(null);
 export function useReplyContext(): UseReplyReturn {
   const ctx = useContext(ReplyRootContext);
   if (!ctx) throw new Error("This part must be rendered inside <Reply.Root>.");
+  return ctx;
+}
+
+// ── Editor ───────────────────────────────────────────────────────────────────
+
+export const EditorRootContext = createContext<UseEditorReturn | null>(null);
+
+export function useEditorContext(): UseEditorReturn {
+  const ctx = useContext(EditorRootContext);
+  if (!ctx) throw new Error("This part must be rendered inside <Editor.Root>.");
   return ctx;
 }

@@ -1,0 +1,142 @@
+/* Layout for the /edit author island (SLIMS-64). Reuses comment-thread.css's
+   login-form/error/sign-out classes for the shared login UI pattern — see
+   EditorIsland.tsx's imports — this file only adds what's specific to the
+   editor itself. */
+
+.hedgerow-edit-status {
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.hedgerow-edit-login p {
+  margin-top: 0;
+}
+
+.hedgerow-edit-identity {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 2rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.95rem;
+}
+
+.hedgerow-edit-layout {
+  display: grid;
+  grid-template-columns: 16rem 1fr;
+  gap: 2.5rem;
+  align-items: start;
+}
+@media (max-width: 40rem) {
+  .hedgerow-edit-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+.hedgerow-edit-list ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.hedgerow-edit-list-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 0.5rem 0.65rem;
+  border: none;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: var(--fg);
+  font: inherit;
+  cursor: pointer;
+}
+.hedgerow-edit-list-item:hover {
+  background: var(--border);
+}
+.hedgerow-edit-list-item[data-selected] {
+  background: var(--accent);
+  color: var(--bg);
+}
+
+.hedgerow-edit-view-link {
+  display: inline-block;
+  margin-bottom: 1rem;
+  font-size: 0.85rem;
+}
+
+.hedgerow-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.hedgerow-edit-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 1rem;
+}
+.hedgerow-edit-label:first-child {
+  margin-top: 0;
+}
+
+.hedgerow-edit-title {
+  width: 100%;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  background: var(--bg);
+  color: var(--fg);
+  font: inherit;
+  font-size: 1.1rem;
+}
+
+.hedgerow-edit-tiptap {
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  padding: 0.75rem;
+  min-height: 16rem;
+}
+.hedgerow-edit-tiptap .ProseMirror {
+  outline: none;
+  min-height: 15rem;
+}
+
+.hedgerow-edit-actions {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-top: 1.25rem;
+}
+
+.hedgerow-edit-save {
+  padding: 0.5rem 1.1rem;
+  border: none;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--bg);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.hedgerow-edit-save:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.hedgerow-edit-status-part {
+  font-size: 0.9rem;
+  color: var(--muted);
+}
+.hedgerow-edit-status-part[data-status="saved"] {
+  color: var(--accent);
+}
+.hedgerow-edit-status-part[data-error] {
+  color: #d33;
+}

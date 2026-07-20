@@ -10,4 +10,11 @@ export type { DefaultClientOptions } from "./default-client.js";
 
 export type { AgentLike, OAuthClientLike, OAuthPrompt, OAuthSessionLike, ProfileView } from "./client-types.js";
 
-export type { CreateReplyInput, Reader, ReaderProfile, ReaderSession, StrongRef } from "./types.js";
+export type {
+  CreateReplyInput,
+  PublisherLike,
+  Reader,
+  ReaderProfile,
+  ReaderSession,
+  StrongRef,
+} from "./types.js";

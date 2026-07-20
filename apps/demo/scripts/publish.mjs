@@ -24,13 +24,18 @@
 import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+// SLIMS-64: @hedgerow/publish's top-level "." export is now the isomorphic
+// core only (safe for a browser bundle, e.g. the demo's /edit island); this
+// script is a Node CLI, so it imports oauthPublisher/openInBrowser (Node-only:
+// node:http/child_process) via the "./node" subpath instead — see
+// packages/publish/src/node.ts and docs/architecture.md.
 import {
   parsePost,
   publishSite,
   oauthPublisher,
   openInBrowser,
   emptyState,
-} from "@hedgerow/publish";
+} from "@hedgerow/publish/node";
 
 const POSTS_DIR = fileURLToPath(new URL("../posts", import.meta.url));
 const STATE_PATH = fileURLToPath(new URL("../.publish-state.json", import.meta.url));

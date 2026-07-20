@@ -29,7 +29,40 @@ function fakeAgent(profile: ProfileView = PROFILE) {
     cid: "bafyreply1",
     record,
   }));
-  return { agent: { getProfile, post } as unknown as AgentLike, getProfile, post };
+  const records = new Map<string, Record<string, unknown>>();
+  const putRecord = vi.fn(
+    async ({
+      collection,
+      rkey,
+      record,
+    }: {
+      repo: string;
+      collection: string;
+      rkey: string;
+      record: Record<string, unknown>;
+    }) => {
+      records.set(`${collection}/${rkey}`, record);
+      return { data: { uri: `at://${profile.did}/${collection}/${rkey}`, cid: "bafyupdated" } };
+    },
+  );
+  const getRecord = vi.fn(
+    async ({ collection, rkey }: { repo: string; collection: string; rkey: string }) => {
+      const value = records.get(`${collection}/${rkey}`);
+      if (!value) throw new Error("RecordNotFound");
+      return { data: { value } };
+    },
+  );
+  const deleteRecord = vi.fn(
+    async ({ collection, rkey }: { repo: string; collection: string; rkey: string }) => {
+      records.delete(`${collection}/${rkey}`);
+    },
+  );
+  const agent = {
+    getProfile,
+    post,
+    com: { atproto: { repo: { putRecord, getRecord, deleteRecord } } },
+  } as unknown as AgentLike;
+  return { agent, getProfile, post, putRecord, getRecord, deleteRecord, records };
 }
 
 /** A client whose init() resolves a fresh session (as if a session existed already). */
@@ -248,5 +281,92 @@ describe("createReader — createReply", () => {
     expect(record).not.toHaveProperty("rkey");
 
     expect(result).toEqual({ uri: `at://${PROFILE.did}/app.bsky.feed.post/reply1`, cid: "bafyreply1" });
+  });
+});
+
+describe("createReader — asPublisher", () => {
+  it("throws immediately when called while signed out", async () => {
+    const { client } = clientWithoutSession();
+    const reader = createReader({ createClient: () => client });
+
+    expect(() => reader.asPublisher()).toThrow(/signed out/);
+  });
+
+  it("exposes the session's did", async () => {
+    const session = fakeSession();
+    const { client } = clientWithSession(session);
+    const { agent } = fakeAgent();
+    const reader = createReader({ createClient: () => client, createAgent: () => agent });
+    await reader.restore();
+
+    expect(reader.asPublisher().did).toBe(PROFILE.did);
+  });
+
+  it("putRecord writes through agent.com.atproto.repo.putRecord with repo set to the reader's did", async () => {
+    const session = fakeSession();
+    const { client } = clientWithSession(session);
+    const { agent, putRecord } = fakeAgent();
+    const reader = createReader({ createClient: () => client, createAgent: () => agent });
+    await reader.restore();
+
+    const record = { $type: "site.standard.document", title: "Edited" };
+    const result = await reader.asPublisher().putRecord("site.standard.document", "abc123", record);
+
+    expect(putRecord).toHaveBeenCalledWith({
+      repo: PROFILE.did,
+      collection: "site.standard.document",
+      rkey: "abc123",
+      record,
+    });
+    expect(result).toEqual({ uri: `at://${PROFILE.did}/site.standard.document/abc123`, cid: "bafyupdated" });
+  });
+
+  it("getRecord returns the existing value after a putRecord, and null when absent", async () => {
+    const session = fakeSession();
+    const { client } = clientWithSession(session);
+    const { agent } = fakeAgent();
+    const reader = createReader({ createClient: () => client, createAgent: () => agent });
+    await reader.restore();
+    const publisher = reader.asPublisher();
+
+    expect(await publisher.getRecord("site.standard.document", "missing")).toBeNull();
+
+    const record = { $type: "site.standard.document", title: "Edited" };
+    await publisher.putRecord("site.standard.document", "abc123", record);
+    expect(await publisher.getRecord("site.standard.document", "abc123")).toEqual(record);
+  });
+
+  it("deleteRecord removes the record via agent.com.atproto.repo.deleteRecord", async () => {
+    const session = fakeSession();
+    const { client } = clientWithSession(session);
+    const { agent, deleteRecord } = fakeAgent();
+    const reader = createReader({ createClient: () => client, createAgent: () => agent });
+    await reader.restore();
+    const publisher = reader.asPublisher();
+
+    await publisher.putRecord("site.standard.document", "abc123", { $type: "site.standard.document" });
+    await publisher.deleteRecord("site.standard.document", "abc123");
+
+    expect(deleteRecord).toHaveBeenCalledWith({
+      repo: PROFILE.did,
+      collection: "site.standard.document",
+      rkey: "abc123",
+    });
+    expect(await publisher.getRecord("site.standard.document", "abc123")).toBeNull();
+  });
+
+  it("a Publisher built before sign-out starts throwing on use after signOut()", async () => {
+    const session = fakeSession();
+    const { client } = clientWithSession(session);
+    const { agent } = fakeAgent();
+    const reader = createReader({ createClient: () => client, createAgent: () => agent });
+    await reader.restore();
+    const publisher = reader.asPublisher();
+
+    await reader.signOut();
+
+    await expect(
+      publisher.putRecord("site.standard.document", "abc123", { $type: "site.standard.document" }),
+    ).rejects.toThrow(/sign-out/);
   });
 });

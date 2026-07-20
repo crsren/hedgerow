@@ -3,7 +3,14 @@
 // createAgent — so tests never touch WebCrypto, IndexedDB, or the network.
 import { createDefaultAgent, createDefaultClient } from "./default-client.js";
 import type { AgentLike, OAuthClientLike, OAuthPrompt, OAuthSessionLike } from "./client-types.js";
-import type { CreateReplyInput, Reader, ReaderProfile, ReaderSession, StrongRef } from "./types.js";
+import type {
+  CreateReplyInput,
+  PublisherLike,
+  Reader,
+  ReaderProfile,
+  ReaderSession,
+  StrongRef,
+} from "./types.js";
 
 /** Default authorization server for `signUp()` — the same one `signIn()`'s
  * README example points a bare handle at when there's no PDS hint yet. */
@@ -129,6 +136,43 @@ export function createReader(options: CreateReaderOptions = {}): Reader {
         createdAt: new Date().toISOString(),
       });
       return { uri, cid };
+    },
+
+    asPublisher(): PublisherLike {
+      if (!session || !agent) {
+        throw new Error("createReader: asPublisher() called while signed out");
+      }
+      const did = session.did;
+      // Resolves the live `com.atproto.repo.*` surface off the OUTER `agent`
+      // variable (never a copy captured at asPublisher() call time), so a
+      // later signOut() correctly makes a Publisher built before it start
+      // throwing too, rather than silently keeping a stale session alive.
+      // `AgentLike.com` is optional (a minimal getProfile/post-only fake, as
+      // several reader.test.ts cases use, doesn't need to stub it) — real
+      // agents (createDefaultAgent's `new Agent(session)`) always have it.
+      function repo() {
+        if (!agent) throw new Error("createReader: asPublisher() used after sign-out");
+        if (!agent.com) throw new Error("createReader: asPublisher() needs an agent with com.atproto.repo.*");
+        return agent.com.atproto.repo;
+      }
+      return {
+        did,
+        async putRecord(collection, rkey, record) {
+          const res = await repo().putRecord({ repo: did, collection, rkey, record });
+          return { uri: res.data.uri, cid: res.data.cid };
+        },
+        async getRecord(collection, rkey) {
+          try {
+            const res = await repo().getRecord({ repo: did, collection, rkey });
+            return res.data.value;
+          } catch {
+            return null; // RecordNotFound (or transient error — worst case a caller re-puts)
+          }
+        },
+        async deleteRecord(collection, rkey) {
+          await repo().deleteRecord({ repo: did, collection, rkey });
+        },
+      };
     },
   };
 }
