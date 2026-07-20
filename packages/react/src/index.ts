@@ -30,6 +30,14 @@ import {
   Empty as LikesEmpty,
   ErrorMessage as LikesError,
 } from "./likes";
+import {
+  Root as ReplyRoot,
+  Field as ReplyField,
+  Submit as ReplySubmit,
+  SignedIn as ReplySignedIn,
+  SignedOut as ReplySignedOut,
+  ErrorMessage as ReplyError,
+} from "./reply";
 
 /**
  * Comment thread parts. `Root` provides state; the rest read it. `Item` is the
@@ -66,9 +74,25 @@ export const Likes = {
   Error: LikesError,
 } as const;
 
+/**
+ * Reply composer parts: `Root` takes `session` + `onSubmit` (both injected —
+ * no dependency on @hedgerow/reader or any other auth library) and runs the
+ * submit state machine; the rest read it. `SignedIn`/`SignedOut` are
+ * conditional slots on `session`.
+ */
+export const Reply = {
+  Root: ReplyRoot,
+  Field: ReplyField,
+  Submit: ReplySubmit,
+  SignedIn: ReplySignedIn,
+  SignedOut: ReplySignedOut,
+  Error: ReplyError,
+} as const;
+
 // ── Hooks (the headless core; usable without any component) ───────────────────
 export { useComments } from "./useComments";
 export { useLikes } from "./useLikes";
+export { useReply } from "./useReply";
 export { useCommentNode } from "./hooks";
 export {
   useCommentsContext,
@@ -76,6 +100,7 @@ export {
   useOptionalCommentItem,
   useLikesContext,
   useLikeItemContext,
+  useReplyContext,
 } from "./context";
 
 // ── Render primitive (for building your own custom parts) ─────────────────────
@@ -138,6 +163,19 @@ export type {
   LikesErrorState,
   LikesErrorProps,
 } from "./likes";
+export type {
+  ReplyRootState,
+  ReplyRootProps,
+  ReplyFieldState,
+  ReplyFieldProps,
+  ReplySubmitState,
+  ReplySubmitProps,
+  ReplySignedInProps,
+  ReplySignedOutProps,
+  ReplyErrorState,
+  ReplyErrorProps,
+} from "./reply";
+export type { ReplyStatus, ReplySession, UseReplyOptions, UseReplyReturn } from "./useReply";
 
 // Re-export the read core's public shapes so consumers need only one import.
 export {

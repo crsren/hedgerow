@@ -1,0 +1,17 @@
+{
+  // Browser-only package (BrowserOAuthClient, window.location), but the unit
+  // tests run under vitest/node with every atproto/DOM dependency injected
+  // away — so DOM lib for the browser types plus node types for the test
+  // runner, same split as @hedgerow/comments.
+  "extends": "@hedgerow/tsconfig/base.json",
+  "compilerOptions": {
+    "lib": ["ES2023", "DOM", "DOM.Iterable"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "target": "ES2022",
+    "types": ["node"],
+    "rootDir": ".",
+    "outDir": "dist"
+  },
+  "include": ["src/**/*", "test/**/*"]
+}

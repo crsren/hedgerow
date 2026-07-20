@@ -29,6 +29,9 @@ importers:
       '@hedgerow/react':
         specifier: workspace:*
         version: link:../../packages/react
+      '@hedgerow/reader':
+        specifier: workspace:*
+        version: link:../../packages/reader
       astro:
         specifier: ^5.1.1
         version: 5.18.2(@types/node@22.20.1)(ioredis@5.11.1)(rollup@4.62.2)(typescript@5.9.3)(yaml@2.9.0)
@@ -149,6 +152,34 @@ importers:
       react-dom:
         specifier: ^18.3.1
         version: 18.3.1(react@18.3.1)
+      tsup:
+        specifier: ^8.3.5
+        version: 8.5.1(postcss@8.5.20)(typescript@5.9.3)(yaml@2.9.0)
+      typescript:
+        specifier: ^5.7.2
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.8
+        version: 2.1.9(@types/node@22.20.1)(jsdom@25.0.1)
+
+  packages/reader:
+    dependencies:
+      '@atproto/api':
+        specifier: ^0.20.30
+        version: 0.20.30
+      '@atproto/oauth-client-browser':
+        specifier: ^0.4.9
+        version: 0.4.9
+    devDependencies:
+      '@hedgerow/tsconfig':
+        specifier: workspace:*
+        version: link:../../tooling/tsconfig
+      '@types/node':
+        specifier: ^22.10.2
+        version: 22.20.1
+      '@vitest/coverage-v8':
+        specifier: ^2.1.9
+        version: 2.1.9(vitest@2.1.9(@types/node@22.20.1)(jsdom@25.0.1))
       tsup:
         specifier: ^8.3.5
         version: 8.5.1(postcss@8.5.20)(typescript@5.9.3)(yaml@2.9.0)
@@ -440,6 +471,10 @@ packages:
 
   '@atproto/lexicon@0.7.7':
     resolution: {integrity: sha512-92VH2oEsJdrIVNy7WY8rGn99ANNVglyUffoN7GJc0mxKi+fXN5iVlJ2cOyTfYABhr2ldSiptZWXEPEdBaIR9/A==}
+    engines: {node: '>=22'}
+
+  '@atproto/oauth-client-browser@0.4.9':
+    resolution: {integrity: sha512-97sZG7vacmlPlSVmHHWgPoBDhQukDvt7ajwexrg5FVW3Y8ngIIXCUQOSas5vUTyl16SUmsDf7WtGMsjPjNkFdg==}
     engines: {node: '>=22'}
 
   '@atproto/oauth-client-node@0.4.9':
@@ -5663,6 +5698,18 @@ snapshots:
       '@atproto/syntax': 0.7.2
       multiformats: 13.4.2
       zod: 3.25.76
+
+  '@atproto/oauth-client-browser@0.4.9':
+    dependencies:
+      '@atproto-labs/did-resolver': 0.3.5
+      '@atproto-labs/handle-resolver': 0.4.6
+      '@atproto-labs/simple-store': 0.4.4
+      '@atproto/did': 0.5.4
+      '@atproto/jwk': 0.7.4
+      '@atproto/jwk-webcrypto': 0.3.4
+      '@atproto/oauth-client': 0.7.11
+      '@atproto/oauth-types': 0.7.5
+      core-js: 3.49.0
 
   '@atproto/oauth-client-node@0.4.9':
     dependencies:

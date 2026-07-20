@@ -58,6 +58,10 @@ export interface HeadlessProps<State> {
   children?: React.ReactNode;
 }
 
+/** Props common to a headless part rendering intrinsic element `Tag`. */
+export type PartProps<State, Tag extends keyof React.JSX.IntrinsicElements> = HeadlessProps<State> &
+  Omit<React.ComponentPropsWithoutRef<Tag>, "className" | "style" | "children">;
+
 /** Compose N refs into one callback ref. Nulls are ignored. */
 export function mergeRefs<T>(
   ...refs: Array<React.Ref<T> | undefined>

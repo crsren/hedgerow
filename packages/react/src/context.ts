@@ -1,4 +1,4 @@
-// Context plumbing. Four contexts, each with a strict accessor hook that names
+// Context plumbing. Five contexts, each with a strict accessor hook that names
 // the part it must live under — so a misplaced `<Comments.Author>` fails loud
 // with a useful message instead of a cryptic null read.
 import { createContext, useContext, type ReactNode } from "react";
@@ -6,6 +6,7 @@ import type { CommentNode } from "@hedgerow/comments";
 import type { UseCommentsReturn } from "./useComments";
 import type { UseLikesReturn } from "./useLikes";
 import type { Like } from "@hedgerow/comments";
+import type { UseReplyReturn } from "./useReply";
 
 // ── Comments ─────────────────────────────────────────────────────────────────
 
@@ -59,5 +60,15 @@ export const LikeItemContext = createContext<Like | null>(null);
 export function useLikeItemContext(): Like {
   const ctx = useContext(LikeItemContext);
   if (!ctx) throw new Error("This part must be rendered inside <Likes.Avatars>.");
+  return ctx;
+}
+
+// ── Reply ────────────────────────────────────────────────────────────────────
+
+export const ReplyRootContext = createContext<UseReplyReturn | null>(null);
+
+export function useReplyContext(): UseReplyReturn {
+  const ctx = useContext(ReplyRootContext);
+  if (!ctx) throw new Error("This part must be rendered inside <Reply.Root>.");
   return ctx;
 }

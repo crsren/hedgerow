@@ -8,7 +8,7 @@ export default defineConfig({
   integrations: [react()],
   vite: {
     ssr: {
-      noExternal: ["@hedgerow/publish", "@hedgerow/react", "@hedgerow/comments"],
+      noExternal: ["@hedgerow/publish", "@hedgerow/react", "@hedgerow/comments", "@hedgerow/reader"],
     },
   },
 });

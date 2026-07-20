@@ -2,6 +2,8 @@
 
 Headless React components for showing live Bluesky comments and likes on your own site. Point a `<Comments.Root>` at one of your posts and its replies render on your page, reading straight from the public Bluesky AppView — no auth, no API key, no styles. Every part renders a plain default element and exposes its state through `className`/`style`/`render` functions and `data-*` attributes, so the markup and the look are entirely yours.
 
+A third namespace, `Reply.*`, gives you a headless reply composer — but this package stays read-only and dependency-thin itself: `Reply.Root` takes `session`/`onSubmit` as plain props, so wiring up a real reader identity (e.g. [`@hedgerow/reader`](../reader)'s browser OAuth client) is entirely up to the consumer. See [Reply composer](#reply) below.
+
 Built on [`@hedgerow/comments`](../comments), the zero-dependency read core. The `render` prop follows the [Base UI](https://base-ui.com) contract, so if you've used Base UI or Radix the composition model is the one you already know.
 
 ## Install
@@ -116,6 +118,17 @@ Every attribute a part emits, derived from the components:
 | `Likes.Avatars` | `data-count` | number of avatars rendered |
 | | `data-total` | number of likes collected |
 | `Likes.Avatar` | `data-handle` | the liker's handle |
+| `Reply.Root` | `data-status` | `idle` \| `submitting` \| `error` |
+| | `data-signed-in` | present when `session` is non-null |
+| | `data-submitting` | present while the reply is being written |
+| | `data-error` | present when the last submit failed |
+| `Reply.Field` | `data-submitting` | present while submitting |
+| | `data-signed-in` | present when `session` is non-null |
+| `Reply.Submit` | `data-submitting` | present while submitting |
+| | `data-disabled` | present while submitting or the field is empty |
+| `Reply.SignedIn` | `data-signed-in` | always present (renders only when `session` is non-null) |
+| `Reply.SignedOut` | `data-signed-out` | always present (renders only when `session` is null) |
+| `Reply.Error` | `data-error` | always present (renders only after a failed submit) |
 
 `Comments.Avatar`, `Comments.Content`, and `Comments.Timestamp` emit no `data-*` of their own — `Content` renders the body text, `Avatar` an `<img>` (with `alt` and `loading="lazy"`), and `Timestamp` a `<time>` with a machine-readable `dateTime`.
 
@@ -186,9 +199,68 @@ Every part accepts the shared headless props — `className` (string or `(state)
 
 > **Totals caveat.** `getLikes` returns pages of actors, not a grand total, so `Likes.Count` reports the number actually *fetched* (capped by `pageSize × maxPages`), which can be fewer than the post's real like count. For the true like number, read `stats.likeCount` from `Comments.Stats` / `useComments` — the demo does exactly this (avatars from `Likes`, the count from the thread's stats).
 
+### `Reply.*`
+
+| Part | Default element | State | Notes |
+|------|-----------------|-------|-------|
+| `Reply.Root` | `form` | `{ status, isSignedIn, isSubmitting, isError }` | Provider + container. Takes `session` (`{ did, handle, displayName? } \| null`) and `onSubmit(text) => Promise<void>` as props, plus `onSubmitted?: () => void` and `defaultValue?: string`. Renders a `<form>` so both `Reply.Submit` and pressing Enter in `Reply.Field` submit; the native submit is intercepted. |
+| `Reply.Field` | `textarea` | `{ value, isSubmitting, isSignedIn }` | The reply text, bound to `Reply.Root`'s own state — `value`/`onChange` aren't exposed as props (see the escape hatch below). |
+| `Reply.Submit` | `button` (`type="submit"`) | `{ isSubmitting, isDisabled, isSignedIn }` | Disabled while submitting or the field is empty/whitespace. Defaults to "Reply" / "Posting…" text. |
+| `Reply.SignedIn` | `div` | `{}` | Renders only when `session` is non-null. |
+| `Reply.SignedOut` | `div` | `{}` | Renders only when `session` is null. |
+| `Reply.Error` | `div` (`role="alert"`) | `{ error }` | Renders only after a failed submit; the field's text is preserved so the reader can retry. |
+
+`Reply.*` has **no dependency on any auth library** — `session`/`onSubmit` are plain props, so you wire up [`@hedgerow/reader`](../reader)'s `createReader()` (or anything else that can produce a `{ did, handle, displayName? }` and write a reply) yourself:
+
+```tsx
+import { Reply } from "@hedgerow/react";
+import { createReader } from "@hedgerow/reader";
+import { useEffect, useState } from "react";
+
+const reader = createReader(); // loopback client id in dev; pass clientId for a real deployment
+
+function ReplyBox({ root, parent }: { root: { uri: string; cid: string }; parent: { uri: string; cid: string } }) {
+  const [session, setSession] = useState<{ did: string; handle: string } | null>(null);
+
+  useEffect(() => {
+    reader.restore().then(setSession);
+  }, []);
+
+  return (
+    <Reply.Root
+      className="reply-box"
+      session={session}
+      onSubmit={(text) => reader.createReply({ root, parent, text }).then(() => {})}
+    >
+      <Reply.SignedOut className="reply-signed-out">
+        <button type="button" onClick={() => reader.signIn(prompt("Your handle?") ?? "")}>
+          Log in with Bluesky
+        </button>
+      </Reply.SignedOut>
+      <Reply.SignedIn className="reply-signed-in">
+        <Reply.Field className="reply-field" placeholder="Write a reply…" />
+        <Reply.Submit className="reply-submit" />
+        <Reply.Error className="reply-error" />
+      </Reply.SignedIn>
+    </Reply.Root>
+  );
+}
+```
+
+For a fully custom field (not the built-in `Reply.Field`), read `value`/`setValue` directly off `useReplyContext()` — the same escape hatch the [custom sort control](#a-custom-sort-control) recipe uses for `Comments`:
+
+```tsx
+import { useReplyContext } from "@hedgerow/react";
+
+function CustomField() {
+  const { value, setValue } = useReplyContext();
+  return <input value={value} onChange={(e) => setValue(e.target.value)} />;
+}
+```
+
 ## Hooks
 
-The components are a thin shell over two hooks. Use them directly when you want your own markup entirely.
+The components are a thin shell over three hooks. Use them directly when you want your own markup entirely.
 
 ```ts
 function useComments(options: UseCommentsOptions): UseCommentsReturn;
@@ -248,7 +320,31 @@ interface UseLikesReturn {
 
 Both fetch in an effect (never during render), so they're SSR-safe, and both guard latest-wins so a slow response can't clobber a newer one.
 
-There's also `useCommentNode()` — the current `CommentNode` inside a `<Comments.Item>`, the escape hatch for building your own parts — and the context hooks `useCommentsContext()` / `useLikesContext()` (throw if used outside their `Root`).
+```ts
+function useReply(options: UseReplyOptions): UseReplyReturn;
+
+interface UseReplyOptions {
+  session: { did: string; handle: string; displayName?: string } | null;
+  onSubmit: (text: string) => Promise<void>;
+  onSubmitted?: () => void;               // called once the field is cleared after a successful submit
+  defaultValue?: string;                  // initial field text (uncontrolled)
+}
+
+interface UseReplyReturn {
+  session: { did: string; handle: string; displayName?: string } | null;
+  isSignedIn: boolean;
+  status: "idle" | "submitting" | "error";
+  isSubmitting: boolean; isError: boolean;
+  error: unknown;
+  value: string;
+  setValue: (value: string) => void;
+  submit: () => Promise<void>;            // no-ops while submitting or the value is empty
+}
+```
+
+Unlike the other two, `useReply` fetches nothing — it's pure client-side composer state; `onSubmit` is where you plug in the actual write (e.g. [`@hedgerow/reader`](../reader)'s `createReply`).
+
+There's also `useCommentNode()` — the current `CommentNode` inside a `<Comments.Item>`, the escape hatch for building your own parts — and the context hooks `useCommentsContext()` / `useLikesContext()` / `useReplyContext()` (throw if used outside their respective `Root`).
 
 ### Hooks-only example
 

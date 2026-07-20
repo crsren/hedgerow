@@ -10,7 +10,7 @@
 // filtering is the consumer's call via `<Comments.Root filter>`.
 import * as React from "react";
 import type { CommentNode, Comment, Label, PostStats, SortOrder } from "@hedgerow/comments";
-import { renderElement, dataAttrs, type HeadlessProps } from "./render";
+import { renderElement, dataAttrs, type HeadlessProps, type PartProps } from "./render";
 import {
   CommentsRootContext,
   CommentItemContext,
@@ -21,9 +21,9 @@ import {
 } from "./context";
 import { useComments, type UseCommentsOptions, type UseCommentsReturn } from "./useComments";
 
-/** Props common to a headless part rendering intrinsic element `Tag`. */
-export type PartProps<State, Tag extends keyof React.JSX.IntrinsicElements> = HeadlessProps<State> &
-  Omit<React.ComponentPropsWithoutRef<Tag>, "className" | "style" | "children">;
+// `PartProps` now lives in ./render (shared infra, not comments-specific) —
+// re-exported here so existing imports of it from "./comments" keep working.
+export type { PartProps };
 
 /** Stable React key for a node (its at:// URI is unique across the tree). */
 const keyOf = (node: CommentNode): string => node.uri;

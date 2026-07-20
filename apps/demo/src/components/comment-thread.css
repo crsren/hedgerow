@@ -167,3 +167,129 @@
 .hedgerow-item[data-not-found] .hedgerow-foot {
   display: none;
 }
+
+/* ── Reply box (SLIMS-66: comment-in-place) ──────────────────────────────── */
+
+.hedgerow-reply-box {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.hedgerow-reply-login {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.hedgerow-reply-handle {
+  flex: 1 1 14rem;
+  min-width: 0;
+  padding: 0.5rem 0.7rem;
+  font: inherit;
+  font-size: 0.9rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+}
+.hedgerow-reply-handle:disabled {
+  opacity: 0.6;
+}
+
+.hedgerow-reply-login-button,
+.hedgerow-reply-submit {
+  padding: 0.5rem 1rem;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--accent);
+  border: none;
+  border-radius: 0.4rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.hedgerow-reply-login-button:disabled,
+.hedgerow-reply-submit[data-disabled] {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.hedgerow-reply-signup {
+  margin: 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.hedgerow-reply-signup-button {
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+.hedgerow-reply-signup-button:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.hedgerow-reply-signedin {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.hedgerow-reply-identity {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+.hedgerow-reply-signout {
+  font: inherit;
+  font-size: 0.82rem;
+  color: var(--muted);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.hedgerow-reply-field {
+  width: 100%;
+  padding: 0.6rem 0.75rem;
+  font: inherit;
+  font-size: 0.95rem;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 0.4rem;
+  resize: vertical;
+}
+
+.hedgerow-reply-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.hedgerow-reply-error {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--accent);
+}
+
+.hedgerow-reply-delayed {
+  margin: 0;
+  font-size: 0.82rem;
+  font-style: italic;
+  color: var(--muted);
+}

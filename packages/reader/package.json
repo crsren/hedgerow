@@ -1,0 +1,58 @@
+{
+  "name": "@hedgerow/reader",
+  "version": "0.0.1",
+  "description": "Browser-side reader identity for Bluesky comments: atproto OAuth login (BrowserOAuthClient) and writing a reply post to the reader's own PDS.",
+  "keywords": [
+    "atproto",
+    "at-protocol",
+    "bluesky",
+    "oauth",
+    "comments",
+    "reader",
+    "browser"
+  ],
+  "homepage": "https://github.com/crsren/hedgerow/tree/main/packages/reader",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crsren/hedgerow.git",
+    "directory": "packages/reader"
+  },
+  "bugs": "https://github.com/crsren/hedgerow/issues",
+  "license": "MIT",
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "src"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@atproto/api": "^0.20.30",
+    "@atproto/oauth-client-browser": "^0.4.9"
+  },
+  "devDependencies": {
+    "@hedgerow/tsconfig": "workspace:*",
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^2.1.9",
+    "tsup": "^8.3.5",
+    "typescript": "^5.7.2",
+    "vitest": "^2.1.8"
+  }
+}
