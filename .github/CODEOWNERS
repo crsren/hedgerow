@@ -1,15 +1,18 @@
-# Code owners — ATTENTION ROUTING, not a security boundary.
+# Code owners.
 #
-# Be honest about what this does. Agents currently commit and open PRs using
-# the maintainer's own GitHub identity, so an agent IS the code owner and can
-# satisfy any review requirement here. Against a confused or hijacked agent
-# this stops nothing. What it does do is force the question "why is this PR
-# touching that file?" at the moment of merge, which is worth having.
+# How much this guarantees depends on WHO opened the PR:
 #
-# (The change that would give this teeth is a separate GitHub identity for
-# agents. Then GitHub's own self-approval prohibition does real work and every
-# gate below acquires meaning. Until then, read the list as a checklist, not a
-# lock.)
+#   @jack-bot-slims (and any other agent with its own account) — a real gate.
+#     It is not a code owner, so GitHub requires an approval from one, and it
+#     cannot self-approve. This is the case the list below is designed for.
+#
+#   An agent driving @crsren's own session — attention routing only. That
+#     agent IS the code owner and can satisfy any review requirement here.
+#     The list still earns its keep by forcing "why is this PR touching that
+#     file?" at merge time, but do not mistake it for a lock.
+#
+# Agents that need write access should get their own account rather than
+# borrowing the maintainer's, precisely so they land in the first case.
 #
 # SELECTION RULE: own the paths where the diff does not show the danger, or
 # where a mistake is irreversible. Deliberately NOT everything — a review you
