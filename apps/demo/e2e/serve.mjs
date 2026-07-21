@@ -38,7 +38,27 @@ async function main() {
 
   const astro = spawn(ASTRO_BIN, ["dev", "--port", PORT, "--host", "127.0.0.1"], {
     cwd: DEMO_DIR,
-    env: { ...process.env, ...dn.env },
+    env: {
+      ...process.env,
+      ...dn.env,
+      // Astro 7 sniffs the environment (via `am-i-vibing`, which looks for
+      // CLAUDECODE, CURSOR_TRACE_ID, GEMINI_CLI and friends) and, if it thinks
+      // an AI agent is driving, silently switches `astro dev` into BACKGROUND
+      // mode — the process detaches and EXITS. This harness watches for that
+      // exit to tear the dev-net down, so the whole suite died on startup with
+      // "Process from config.webServer exited early" whenever an agent ran it.
+      //
+      // ASTRO_DEV_BACKGROUND is Astro's own re-entrancy guard: it's set on the
+      // already-detached child so it doesn't re-detect and detach again, and
+      // the check is `!process.env.ASTRO_DEV_BACKGROUND && isRunByAgent()`.
+      // Setting it here therefore forces the foreground path. `--ignore-lock`
+      // is NOT an alternative: Astro rejects it outright when it has
+      // auto-detected an agent.
+      //
+      // We always want the foreground server, whoever runs the tests — a
+      // detached server would outlive the run and hold the dev lockfile.
+      ASTRO_DEV_BACKGROUND: "1",
+    },
     stdio: "inherit",
   });
 
