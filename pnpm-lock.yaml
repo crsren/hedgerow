@@ -76,8 +76,8 @@ importers:
         specifier: ^0.9.9
         version: 0.9.9(prettier@3.9.5)(typescript@5.9.3)
       '@atproto/api':
-        specifier: ^0.20.0
-        version: 0.20.30
+        specifier: ^0.20.31
+        version: 0.20.31
       '@atproto/dev-env':
         specifier: ^0.5.36
         version: 0.5.36
@@ -124,8 +124,8 @@ importers:
   packages/publish:
     dependencies:
       '@atproto/api':
-        specifier: ^0.20.0
-        version: 0.20.30
+        specifier: ^0.20.31
+        version: 0.20.31
       '@atproto/common-web':
         specifier: ^0.5.6
         version: 0.5.6
@@ -210,8 +210,8 @@ importers:
   packages/reader:
     dependencies:
       '@atproto/api':
-        specifier: ^0.20.30
-        version: 0.20.30
+        specifier: ^0.20.31
+        version: 0.20.31
       '@atproto/oauth-client-browser':
         specifier: ^0.4.9
         version: 0.4.9
@@ -406,10 +406,6 @@ packages:
 
   '@atproto-labs/xrpc-utils@0.1.10':
     resolution: {integrity: sha512-R6bH9qpavx9cSsuKfwlJEe58BqrPWRB7lmARSkRaO7ZDb7YUru1cu92GPu0Dp2HTOCZPw2jAdWBCO5z//DWyww==}
-    engines: {node: '>=22'}
-
-  '@atproto/api@0.20.30':
-    resolution: {integrity: sha512-t/9pPW+60AFeefiT186z4Z16yz4UmNGtb0EYVyCIHkwYk6nat57OvJA3oEbp4NK9yd/REsVCTBk6gOk8PNWyQQ==}
     engines: {node: '>=22'}
 
   '@atproto/api@0.20.31':
@@ -5511,17 +5507,6 @@ snapshots:
       - bufferutil
       - supports-color
       - utf-8-validate
-
-  '@atproto/api@0.20.30':
-    dependencies:
-      '@atproto/common-web': 0.5.6
-      '@atproto/lexicon': 0.7.7
-      '@atproto/syntax': 0.7.2
-      '@atproto/xrpc': 0.8.6
-      await-lock: 3.0.0
-      multiformats: 13.4.2
-      tlds: 1.261.0
-      zod: 3.25.76
 
   '@atproto/api@0.20.31':
     dependencies:
