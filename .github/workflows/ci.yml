@@ -36,7 +36,7 @@ jobs:
       - uses: actions/checkout@v4
 
       # No `version:` — pnpm/action-setup reads it from the packageManager field.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
       - uses: actions/setup-node@v4
         with:
@@ -123,7 +123,7 @@ jobs:
         react: ["18", "19"]
     steps:
       - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       - uses: actions/setup-node@v4
         with:
           node-version: 22
