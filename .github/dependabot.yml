@@ -16,11 +16,15 @@ updates:
       interval: monthly
     commit-message:
       prefix: "chore"
-    # One PR for all dev tooling: these move together and reviewing them
-    # separately is noise without signal.
+    # Group only minor/patch dev-tooling updates. Grouping MAJORS was a
+    # mistake: the first grouped PR bundled typescript 5->7, vitest 2->4,
+    # jsdom 25->29 and @types/node 22->26 into one diff, where any single
+    # failure blocks all six and attributing it means unpicking the group by
+    # hand. Majors now arrive one per PR, which is the whole point of a major.
     groups:
       dev-tooling:
         dependency-type: development
+        update-types: ["minor", "patch"]
     # Runtime deps of published packages change what consumers install, so they
     # get their own PR and their own changeset decision.
     open-pull-requests-limit: 5
