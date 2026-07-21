@@ -13,7 +13,7 @@
 // `render` uses) — that's the seam a real editor (the demo mounts Tiptap
 // there) plugs into.
 import * as React from "react";
-import { renderElement, dataAttrs, type ClassNameProp, type StyleProp, type HeadlessProps, type PartProps } from "./render";
+import { renderElement, dataAttrs, type ClassNameProp, type SubmitHandler, type StyleProp, type HeadlessProps, type PartProps } from "./render";
 import { EditorRootContext, useEditorContext } from "./context";
 import { useEditor, type EditorFields, type EditorStatus, type UseEditorOptions, type UseEditorReturn } from "./useEditor";
 
@@ -65,10 +65,12 @@ export const Root = React.forwardRef<HTMLFormElement, EditorRootProps>(function 
     ref,
     props: {
       ...rest,
-      onSubmit: (event: React.FormEvent<HTMLFormElement>) => {
+      // Event type is inferred from SubmitHandler, which React declares
+      // differently on 18 vs 19 — see its definition in render.ts.
+      onSubmit: ((event) => {
         event.preventDefault();
         void value.save();
-      },
+      }) as SubmitHandler,
       ...dataAttrs({
         status: value.status,
         loading: value.isLoading,

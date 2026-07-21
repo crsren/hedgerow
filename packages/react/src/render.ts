@@ -42,6 +42,15 @@ export type RenderFnProps = React.HTMLAttributes<any> & {
  */
 export type ElementProps = React.HTMLAttributes<Element> & { [key: string]: unknown };
 
+/**
+ * The submit handler React itself declares for these props. React 18 types it
+ * as `FormEventHandler`; React 19 introduced a distinct `SubmitEvent` and
+ * retyped it as `SubmitEventHandler`. Deriving it here (rather than naming
+ * either) keeps `Reply.Root` and `Editor.Root` compiling under both majors —
+ * this library's peer range is `^18 || ^19`, and CI tests both.
+ */
+export type SubmitHandler = NonNullable<ElementProps["onSubmit"]>;
+
 /** The Base-UI-style `render` prop: an element to clone, or a factory. */
 export type RenderProp<State> =
   | React.ReactElement
@@ -75,6 +84,11 @@ export function mergeRefs<T>(
 }
 
 type AnyProps = Record<string, unknown>;
+
+// This library's peer range is `^18 || ^19`, and the two majors disagree about
+// where an element's ref lives. Resolved once from the running React rather
+// than probed per element, so neither major's deprecation getter is touched.
+const REACT_19_PLUS = Number.parseInt(React.version, 10) >= 19;
 
 const isEventHandler = (key: string, value: unknown): value is (...args: unknown[]) => void =>
   typeof value === "function" && /^on[A-Z]/.test(key);
@@ -174,15 +188,26 @@ export function renderElement<State>(
 
   if (React.isValidElement(render)) {
     const element = render as React.ReactElement & { ref?: React.Ref<unknown>; props: AnyProps };
-    // React 19 moved `ref` onto `props` for the element (function) form;
-    // `element.ref` still exists but is no longer where a consumer's ref
-    // necessarily lives. Prefer props.ref, falling back to element.ref for
-    // React 18 (or any element created via the legacy form), so a consumer
-    // ref survives either way.
-    const theirRef = (element.props.ref as React.Ref<unknown> | undefined) ?? element.ref ?? null;
+    // Where a consumer's ref lives on an element swapped between React majors,
+    // and BOTH majors warn if you read the other one's slot:
+    //   React 18 — ref is `element.ref`; reading `element.props.ref` logs
+    //              "`ref` is not a prop".
+    //   React 19 — ref is `element.props.ref`; `element.ref` became a
+    //              deprecation getter logging "Accessing element.ref was
+    //              removed in React 19".
+    // So `props.ref ?? element.ref` cannot be right: on 18 it always warns
+    // (the first read), and on 19 it warns for every element-form `render`
+    // that has no ref (props.ref is undefined, so it falls through to the
+    // getter). Read only the slot that is real for the running major.
+    const theirRef = REACT_19_PLUS
+      ? ((element.props.ref as React.Ref<unknown> | undefined) ?? null)
+      : (element.ref ?? null);
     return React.cloneElement(
       element,
-      mergeProps(own, element.props, theirRef) as React.Attributes,
+      // React 19 tightened cloneElement's second parameter to
+      // `Partial<P> & Attributes`; a bare `Attributes` cast no longer
+      // satisfies it once P is inferred as AnyProps. Valid on 18 too.
+      mergeProps(own, element.props, theirRef) as Partial<AnyProps> & React.Attributes,
     );
   }
 

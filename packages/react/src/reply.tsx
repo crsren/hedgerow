@@ -7,7 +7,7 @@
 // up whichever atproto OAuth client (or mock) they like. This is what keeps
 // the package dependency-thin — see docs/architecture.md.
 import * as React from "react";
-import { renderElement, dataAttrs, type HeadlessProps, type PartProps } from "./render";
+import { renderElement, dataAttrs, type SubmitHandler, type HeadlessProps, type PartProps } from "./render";
 import { ReplyRootContext, useReplyContext } from "./context";
 import { useReply, type ReplySession, type UseReplyOptions, type UseReplyReturn } from "./useReply";
 
@@ -60,10 +60,12 @@ export const Root = React.forwardRef<HTMLFormElement, ReplyRootProps>(function R
     ref,
     props: {
       ...rest,
-      onSubmit: (event: React.FormEvent<HTMLFormElement>) => {
+      // Event type is inferred from SubmitHandler, which React declares
+      // differently on 18 vs 19 — see its definition in render.ts.
+      onSubmit: ((event) => {
         event.preventDefault();
         void value.submit();
-      },
+      }) as SubmitHandler,
       ...dataAttrs({
         status: value.status,
         "signed-in": value.isSignedIn,
