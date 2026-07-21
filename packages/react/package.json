@@ -63,7 +63,7 @@
     "@hedgerow/tsconfig": "workspace:*",
     "@testing-library/dom": "^10.4.0",
     "@testing-library/react": "^16.1.0",
-    "@types/node": "^22.10.2",
+    "@types/node": "^26.1.1",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
     "@vitest/coverage-v8": "^4.1.10",

@@ -75,7 +75,7 @@
     "@atproto/dev-env": "^0.5.36",
     "@atproto/lexicon": "^0.7.7",
     "@hedgerow/tsconfig": "workspace:*",
-    "@types/node": "^22.10.2",
+    "@types/node": "^26.1.1",
     "@vitest/coverage-v8": "^4.1.10",
     "tsup": "^8.3.5",
     "typescript": "^5.9.3",
