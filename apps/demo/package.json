@@ -14,7 +14,7 @@
     "e2e:install": "playwright install chromium"
   },
   "dependencies": {
-    "@astrojs/react": "^4.2.0",
+    "@astrojs/react": "^6.0.1",
     "@hedgerow/comments": "workspace:*",
     "@hedgerow/publish": "workspace:*",
     "@hedgerow/react": "workspace:*",
