@@ -7,8 +7,15 @@ on:
   # payload, so the new label still wouldn't be visible.
   pull_request:
     types: [opened, synchronize, reopened, labeled, unlabeled]
+  # `changeset-release/main` is the changesets bot's branch for the Version
+  # Packages PR. That PR is created with GITHUB_TOKEN, and GitHub deliberately
+  # does not let one workflow's token trigger another — so the PR arrived with
+  # ZERO checks, which under branch protection made it permanently unmergeable.
+  # The release PR is the one commit that actually publishes, so it is the last
+  # thing that should ship unverified. Running on push to that branch attaches
+  # the same required checks to its head commit.
   push:
-    branches: [main]
+    branches: [main, changeset-release/main]
 
 # Cancel superseded runs on the same ref (e.g. rapid pushes to a PR).
 concurrency:
