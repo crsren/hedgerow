@@ -57,10 +57,10 @@
   },
   "devDependencies": {
     "@hedgerow/tsconfig": "workspace:*",
-    "@types/node": "^22.10.2",
-    "@vitest/coverage-v8": "^2.1.9",
+    "@types/node": "^26.1.1",
+    "@vitest/coverage-v8": "^4.1.10",
     "tsup": "^8.3.5",
-    "typescript": "^5.7.2",
-    "vitest": "^2.1.8"
+    "typescript": "^7.0.2",
+    "vitest": "^4.1.10"
   }
 }
