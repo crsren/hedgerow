@@ -1,10 +1,15 @@
-# Release automation (Changesets) — VERSIONING ONLY for now.
+# Release automation (Changesets) — versioning AND publishing.
 #
-# The changesets action deliberately has NO `publish:` input yet, so it only
-# ever opens/updates a "Version Packages" PR and can never push to npm.
-# (Lesson learned: with `publish:` set, `changeset publish` attempts to publish
-# any package whose version is absent from the registry — even with zero
-# pending changesets. It tried on the very first push.)
+# With changesets pending this opens a "Version Packages" PR and publishes
+# nothing. With none pending it publishes whatever versions are on main that
+# the registry doesn't have. Merging the version PR is what moves you from the
+# first state to the second, which is why that merge IS the release decision.
+#
+# (Historical note: this ran versioning-only for its first weeks, because with
+# `publish:` set `changeset publish` will publish any package whose version is
+# absent from the registry — even with zero pending changesets. That bit us on
+# the very first push, before the packages existed on npm. All four now exist
+# at >= 0.1.0, so the empty-registry case can't recur.)
 #
 # Publishing will use npm TRUSTED PUBLISHING (OIDC) — no NPM_TOKEN secret ever.
 # Trusted publishing can only be configured on packages that already exist, so:
@@ -12,10 +17,10 @@
 #      DONE — all four packages published at 0.1.0 on 2026-07-20.
 #   2. On npmjs.com, per package: Settings -> Trusted Publisher -> GitHub Actions
 #      -> repo crsren/hedgerow, workflow release.yml, environment npm-publish.
-#   3. Make the repo public (OIDC needs an attestable source), ensure the runner
-#      has an OIDC-capable npm CLI (recent npm; add an npm upgrade step if the
-#      image's is too old), then restore `publish: pnpm release` below.
-#      `permissions: id-token: write` below is already in place for this.
+#   3. Make the repo public (provenance attestation needs an attestable source),
+#      then set `publish: pnpm release` below.
+#      DONE — 2026-07-21. Branch protection and the npm-publish environment are
+#      configured by scripts/setup-release-protection.sh.
 #
 # WHEN A RELEASE GOES WRONG — the playbook, in order. Do NOT reach for
 # unpublish: a name@version can never be reused even after a successful
@@ -69,7 +74,34 @@ jobs:
         with:
           node-version: 22
           cache: pnpm
-          registry-url: https://registry.npmjs.org
+          # NO `registry-url:` on purpose. It writes an .npmrc line
+          # (`_authToken=${NODE_AUTH_TOKEN}`) that, with trusted publishing and
+          # therefore no token, expands to an empty auth header and produces an
+          # ENEEDAUTH that looks like an OIDC misconfiguration but isn't.
+
+      # `pnpm publish` shells out to the SYSTEM npm, and OIDC trusted
+      # publishing lives in the npm CLI: it needs npm >= 11.5.1 (and Node >=
+      # 22.14). setup-node's Node 22 image ships npm 10.x, which would fail at
+      # publish time with an auth error that looks like a trusted-publisher
+      # misconfiguration. Upgrade explicitly, and assert it, so a future image
+      # change can't silently reintroduce this.
+      - name: ensure an OIDC-capable npm
+        run: |
+          npm install -g npm@^11.5.1
+          npm --version
+          node -e "
+            const [maj, min, patch] = process.versions.node.split('.').map(Number);
+            if (maj < 22 || (maj === 22 && min < 14)) {
+              throw new Error('Node ' + process.versions.node + ' is below the 22.14 that OIDC publishing needs');
+            }
+          "
+          node -e "
+            const v = require('child_process').execSync('npm --version').toString().trim();
+            const [maj, min, patch] = v.split('.').map(Number);
+            const ok = maj > 11 || (maj === 11 && (min > 5 || (min === 5 && patch >= 1)));
+            if (!ok) throw new Error('npm ' + v + ' cannot do OIDC trusted publishing (need >= 11.5.1)');
+            console.log('npm ' + v + ' — OIDC capable');
+          "
 
       - run: pnpm install --frozen-lockfile
 
@@ -87,9 +119,13 @@ jobs:
       - name: verify API report is up to date
         run: pnpm api:check
 
-      # Opens/updates a "Version Packages" PR when changesets are pending.
-      # No `publish:` input — see header comment before adding one.
-      - name: Create Release PR
+      # Two modes, decided by whether changesets are pending:
+      #   pending  -> opens/updates the "Version Packages" PR (publishes nothing)
+      #   none     -> the version PR was merged, so publish what's on main
+      # Merging that PR is therefore the release decision.
+      - name: Create Release PR or publish
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1
+        with:
+          publish: pnpm release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
