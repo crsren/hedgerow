@@ -2,9 +2,6 @@
 // loadSite(), so local and live are byte-for-byte the same downstream code path
 // — the whole point of the demo is that pages render from the RECORD shape, not
 // from markdown/frontmatter.
-import { readFileSync, readdirSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-import { join } from "node:path";
 import {
   parsePost,
   publicationRecord,
@@ -16,7 +13,17 @@ import {
   type PublicationConfig,
 } from "@hedgerow/publish";
 
-const POSTS_DIR = fileURLToPath(new URL("../../posts", import.meta.url));
+// Markdown is inlined by Vite at build time rather than read off disk at
+// runtime. Astro 6 emits prerender chunks under `dist/.prerender/`, so a path
+// derived from `import.meta.url` resolved to `dist/posts` during the build and
+// the whole site failed to generate. `import.meta.glob` is resolved by the
+// bundler against THIS source file's location, so dev and build agree by
+// construction and there is no filesystem lookup to get wrong.
+const POST_FILES = import.meta.glob<string>("../../posts/*.md", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+});
 
 // Local publication identity. In local mode there is no PDS, so a document's
 // `site` points at this plain https URL (the lexicon allows that as an alternative
@@ -52,11 +59,10 @@ export interface LoadedSite {
  * live in a PDS), hence uri: null. */
 function loadLocalSite(): LoadedSite {
   const publication = publicationRecord(LOCAL_CONFIG);
-  const documents = readdirSync(POSTS_DIR)
-    .filter((f) => f.endsWith(".md"))
-    .map((file): LoadedDocument => {
-      const md = readFileSync(join(POSTS_DIR, file), "utf8");
-      const post = parsePost(md, file.replace(/\.md$/, ""));
+  const documents = Object.entries(POST_FILES)
+    .map(([path, md]): LoadedDocument => {
+      const slug = path.split("/").pop()!.replace(/\.md$/, "");
+      const post = parsePost(md, slug);
       return {
         uri: null,
         value: documentRecord(post, { siteUri: publication.url }),
