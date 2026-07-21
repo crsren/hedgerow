@@ -9,12 +9,25 @@
 # Publishing will use npm TRUSTED PUBLISHING (OIDC) — no NPM_TOKEN secret ever.
 # Trusted publishing can only be configured on packages that already exist, so:
 #   1. First release runs from a maintainer machine (`pnpm release`, logged-in npm).
+#      DONE — all four packages published at 0.1.0 on 2026-07-20.
 #   2. On npmjs.com, per package: Settings -> Trusted Publisher -> GitHub Actions
-#      -> repo crsren/hedgerow, workflow release.yml.
+#      -> repo crsren/hedgerow, workflow release.yml, environment npm-publish.
 #   3. Make the repo public (OIDC needs an attestable source), ensure the runner
 #      has an OIDC-capable npm CLI (recent npm; add an npm upgrade step if the
 #      image's is too old), then restore `publish: pnpm release` below.
 #      `permissions: id-token: write` below is already in place for this.
+#
+# WHEN A RELEASE GOES WRONG — the playbook, in order. Do NOT reach for
+# unpublish: a name@version can never be reused even after a successful
+# unpublish, and after 72h it's npm support's call anyway.
+#   1. Publish the fix as a new patch version.
+#   2. Move the tag:   npm dist-tag add @hedgerow/<pkg>@<good> latest
+#      (dist-tags are the one fully reversible part of npm — seconds to fix.)
+#   3. Warn installers: npm deprecate @hedgerow/<pkg>@<bad> "use <good>"
+#      (reversible: deprecate with an empty string to undo.)
+# The single exception is a leaked credential inside a tarball, where the
+# bytes themselves are the problem — then unpublish immediately AND rotate the
+# credential, because mirrors and scrapers have it within minutes regardless.
 
 name: Release
 
@@ -31,16 +44,28 @@ permissions:
   pull-requests: write # open & update the "Version Packages" PR
   id-token: write # npm provenance (OIDC)
 
+# Third-party actions are SHA-pinned, not tag-pinned. This job can mint an npm
+# publish credential via OIDC, and a moving tag means upstream (or anyone who
+# compromises it) can change what runs inside that job. OIDC gives no
+# protection here — the token is minted for the legitimate workflow; the
+# malicious code would simply be running inside it. Dependabot keeps the pins
+# current (see .github/dependabot.yml).
 jobs:
   release:
     name: version or publish
     runs-on: ubuntu-latest
+    # Scopes the npm trusted publisher to this workflow AND this environment,
+    # so a future workflow file can't mint a publish token. Deliberately has
+    # NO required reviewers: the real approval is merging the Version Packages
+    # PR, where the actual version numbers and changelog are visible. A second
+    # click you always say yes to just dilutes the one that matters.
+    environment: npm-publish
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
           cache: pnpm
@@ -48,9 +73,23 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # A publish is irreversible — a name@version is burned forever, even if
+      # unpublished. So everything that could invalidate a tarball runs HERE,
+      # in the same job, before the publish step. Relying on ci.yml would mean
+      # a red CI on main could not actually stop a release: separate workflow,
+      # separate run, no dependency between them.
+      - name: typecheck / build / test
+        run: pnpm turbo run typecheck build test
+
+      - name: verify packaging
+        run: pnpm verify:packaging
+
+      - name: verify API report is up to date
+        run: pnpm api:check
+
       # Opens/updates a "Version Packages" PR when changesets are pending.
       # No `publish:` input — see header comment before adding one.
       - name: Create Release PR
-        uses: changesets/action@v1
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

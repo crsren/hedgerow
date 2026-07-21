@@ -1,0 +1,32 @@
+# Code owners.
+#
+# This file only has teeth if `main` has branch protection with "Require review
+# from Code Owners" enabled. Without that it is documentation. See
+# CONTRIBUTING.md ("How a release actually reaches npm") for why that matters.
+#
+# The point is not to gate every change — it's to make the RELEASE MECHANISM
+# itself reviewable. npm's trusted publisher is bound to a repo + workflow
+# filename, not to the workflow's contents: whoever can change release.yml on
+# main can publish arbitrary bytes as @hedgerow/*. In a repo where agents author
+# much of the code, that file deserves a different level of attention than a
+# component.
+#
+# "Why is this PR editing release.yml?" is a question worth stopping on.
+# "Do I want to release 0.2.0?" mostly isn't — which is why the npm-publish
+# environment deliberately has no required reviewer.
+
+# Everything, by default.
+*                           @crsren
+
+# The release mechanism: what publishes, how, and with what credentials.
+/.github/workflows/         @crsren
+/.github/CODEOWNERS         @crsren
+/scripts/                   @crsren
+/.changeset/config.json     @crsren
+
+# What each package ships to npm — `files`, `exports`, `publishConfig`.
+/packages/*/package.json    @crsren
+
+# The committed public API + behavioural contract. A diff here is the evidence
+# for the version bump, so it should never change without someone reading it.
+/api-report/                @crsren

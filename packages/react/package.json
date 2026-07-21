@@ -33,7 +33,10 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
-    "dist"
+    "dist",
+    "LICENSE",
+    "CHANGELOG.md",
+    "README.md"
   ],
   "publishConfig": {
     "access": "public",
@@ -46,13 +49,14 @@
     }
   },
   "scripts": {
+    "prepublishOnly": "node ../../scripts/assert-publish-context.mjs && node ../../scripts/assert-dist-tag.mjs",
     "build": "tsup",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@hedgerow/comments": "workspace:*"
+    "@hedgerow/comments": "workspace:^"
   },
   "devDependencies": {
     "@hedgerow/tsconfig": "workspace:*",

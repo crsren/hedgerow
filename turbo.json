@@ -1,5 +1,11 @@
 {
   "$schema": "https://turbo.build/schema.json",
+  // Every package's tsconfig extends @hedgerow/tsconfig, and that package has
+  // no build task — so without this it contributes to no cache key. Editing
+  // the shared compiler options (which change emitted .d.ts) would then be a
+  // cache HIT, and `pnpm api:check` would verify the committed API report
+  // against a stale dist/ and pass.
+  "globalDependencies": ["tooling/tsconfig/*.json"],
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
@@ -8,7 +14,7 @@
     },
     "typecheck": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "test/**", "tsconfig.json"]
+      "inputs": ["src/**", "test/**", "tsconfig.json", "package.json"]
     },
     "test": {
       "dependsOn": ["^build"],

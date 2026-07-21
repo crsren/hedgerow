@@ -1,0 +1,26 @@
+version: 2
+updates:
+  # Keeps the SHA pins in release.yml current. Pinning without this just means
+  # running old actions forever — Dependabot resolves the tag, bumps the SHA,
+  # and updates the trailing `# v4` comment, so the pin stays honest.
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "ci"
+
+  - package-ecosystem: npm
+    directory: "/"
+    schedule:
+      interval: monthly
+    commit-message:
+      prefix: "chore"
+    # One PR for all dev tooling: these move together and reviewing them
+    # separately is noise without signal.
+    groups:
+      dev-tooling:
+        dependency-type: development
+    # Runtime deps of published packages change what consumers install, so they
+    # get their own PR and their own changeset decision.
+    open-pull-requests-limit: 5

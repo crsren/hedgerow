@@ -97,6 +97,45 @@ function everyLeafEndsWithDefault(exportsField) {
   return Object.values(exportsField).every((v) => everyLeafEndsWithDefault(v));
 }
 
+// Filenames that should never be inside a package tarball, and content
+// patterns that indicate real key material. Kept deliberately narrow: a
+// false positive here blocks a release, so each pattern matches a shape that
+// has essentially no legitimate reason to appear in built output.
+const FORBIDDEN_FILENAMES = [/(^|\/)\.env(\.|$)/, /(^|\/)\.npmrc$/, /(^|\/)\.git\//, /\.pem$/, /(^|\/)id_(rsa|ed25519)$/];
+const SECRET_PATTERNS = [
+  [/-----BEGIN [A-Z ]*PRIVATE KEY-----/, "a PEM private key block"],
+  [/\bnpm_[A-Za-z0-9]{36}\b/, "an npm access token"],
+  [/\bghp_[A-Za-z0-9]{36}\b/, "a GitHub personal access token"],
+  [/\bAKIA[0-9A-Z]{16}\b/, "an AWS access key id"],
+  [/\bsk-[A-Za-z0-9]{32,}\b/, "an OpenAI-style secret key"],
+];
+
+function findSecrets(extractedRoot, filePaths) {
+  const findings = [];
+
+  for (const p of filePaths) {
+    if (FORBIDDEN_FILENAMES.some((re) => re.test(p))) {
+      findings.push(`forbidden file in tarball: ${p}`);
+    }
+  }
+
+  for (const p of filePaths) {
+    const abs = join(extractedRoot, p);
+    if (!existsSync(abs)) continue;
+    let contents;
+    try {
+      contents = readFileSync(abs, "utf8");
+    } catch {
+      continue; // unreadable or binary — nothing to scan
+    }
+    for (const [re, label] of SECRET_PATTERNS) {
+      if (re.test(contents)) findings.push(`${p} contains what looks like ${label}`);
+    }
+  }
+
+  return findings;
+}
+
 function runPnpmPack(pkgPath, destDir) {
   const out = execFileSync("pnpm", ["pack", "--json", "--pack-destination", destDir], {
     cwd: pkgPath,
@@ -181,6 +220,31 @@ for (const pkg of packages) {
   check(
     "packed dist/index.js exists",
     existsSync(join(extractTo, "dist", "index.js")),
+  );
+
+  // A published tarball is public the instant it lands — mirrors and scrapers
+  // have it within minutes, and unpublishing does not un-leak it. The `files`
+  // allowlist makes a stray credential unlikely, but "unlikely" and
+  // "irreversible" together are worth ten lines of grep.
+  // Every manifest says "license": "MIT". npm only includes a LICENSE file
+  // that sits in the package directory — a root-level one does NOT propagate.
+  // Shipping an MIT claim with no licence text is the cheapest real bug here.
+  check(
+    "LICENSE ships in the tarball",
+    filePaths.some((p) => /^LICENSE/.test(p)),
+  );
+
+  const secretFindings = findSecrets(extractTo, filePaths);
+  check(
+    "no credential-shaped files or strings in the tarball",
+    secretFindings.length === 0,
+    secretFindings.length === 0
+      ? ""
+      : `${secretFindings.join("\n         ")}\n` +
+        `         A tarball is public the instant it publishes and unpublishing does\n` +
+        `         not un-leak it. Caught here = caught in time: remove the file, check\n` +
+        `         \`files\`, and rotate the credential anyway. If it ALREADY published,\n` +
+        `         rotate first, then unpublish. Playbook: .github/workflows/release.yml.`,
   );
 
   if (pkg.name === "@hedgerow/react") {
