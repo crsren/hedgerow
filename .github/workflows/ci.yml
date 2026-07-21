@@ -92,3 +92,62 @@ jobs:
           github.head_ref == 'changeset-release/main' ||
           contains(github.event.pull_request.labels.*.name, 'no-changeset')
         run: node scripts/check-changesets.mjs
+
+  # @hedgerow/react declares `react: ^18 || ^19`, but the workspace pins 18 —
+  # so half that claim was never exercised. This leg runs the react suite
+  # against 19 as well. It found a real bug the first time: renderElement read
+  # both ref slots, which warns on 18 today AND would warn on 19.
+  #
+  # Deliberately NOT a matrix on the `build` job: `api:check` compares against
+  # the committed api-report, and @types/react 19 emits different .d.ts text,
+  # so those gates are only meaningful against the committed lockfile.
+  react-compat:
+    name: react ${{ matrix.react }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        react: ["18", "19"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # The 18 leg is the lockfile as committed; only 19 needs an override.
+      - name: Pin React 19
+        if: matrix.react == '19'
+        run: |
+          node -e '
+            const fs = require("fs");
+            const p = JSON.parse(fs.readFileSync("package.json", "utf8"));
+            p.pnpm ??= {};
+            p.pnpm.overrides = {
+              ...p.pnpm.overrides,
+              react: "^19.2.7",
+              "react-dom": "^19.2.7",
+              "@types/react": "^19.2.7",
+              "@types/react-dom": "^19.2.2",
+            };
+            fs.writeFileSync("package.json", JSON.stringify(p, null, 2) + "\n");
+          '
+
+      - run: pnpm install --no-frozen-lockfile
+
+      # .npmrc sets auto-install-peers=true, which can satisfy react from
+      # somewhere other than the override and hand us a green "React 19" leg
+      # that actually ran 18 — the exact failure this job exists to catch.
+      - name: Assert the resolved React major
+        run: |
+          major=$(node -p "require('./packages/react/node_modules/react/package.json').version.split('.')[0]")
+          echo "resolved react major: $major (expected ${{ matrix.react }})"
+          test "$major" = "${{ matrix.react }}"
+
+      # Via turbo, not `pnpm --filter` directly: the typecheck/test tasks
+      # declare `dependsOn: ["^build"]`, so this builds @hedgerow/comments
+      # first. Without it, packages/react can't resolve the workspace dep and
+      # typecheck fails with TS2307 on every import.
+      - run: pnpm turbo run typecheck test --filter=@hedgerow/react --force
+

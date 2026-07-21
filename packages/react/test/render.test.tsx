@@ -4,7 +4,7 @@
 // render, element clone) with class concat, style merge, handler chaining, and
 // ref composition.
 import * as React from "react";
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 import { render } from "@testing-library/react";
 import { renderElement, mergeRefs, chainHandlers, dataAttrs, type RenderElementParams } from "../src/render";
 
@@ -23,7 +23,11 @@ function Probe({
 describe("mergeRefs", () => {
   it("composes callback and object refs and ignores null/undefined", () => {
     const calls: string[] = [];
-    const fnRef = (v: string | null) => calls.push(`fn:${v}`);
+    // React 19 treats a callback ref's return value as a cleanup function, so
+    // it must return void — `calls.push(...)` would return a number.
+    const fnRef = (v: string | null) => {
+      calls.push(`fn:${v}`);
+    };
     const objRef: React.MutableRefObject<string | null> = { current: null };
 
     const merged = mergeRefs<string>(fnRef, objRef, null, undefined);
@@ -173,7 +177,7 @@ describe("renderElement — element (clone) form", () => {
     expect(called).toBe(true);
   });
 
-  it("prefers the element's props.ref (React 19 ref-as-prop form) over its legacy element.ref when both are present", () => {
+  it("reads the ref slot that is real for the running React major, and never touches the other", () => {
     // React 18's own createElement/JSX always extracts a literal `ref={...}`
     // into `element.ref`, never leaving it in `.props` — so the only way to
     // exercise the React-19 shape under this repo's React 18 test peer is to
@@ -199,8 +203,38 @@ describe("renderElement — element (clone) form", () => {
       />,
     );
 
-    expect(propsRef.current).not.toBeNull();
-    expect(legacyRef.current).toBeNull();
+    // Both majors warn if you read the OTHER one's ref slot, so renderElement
+    // reads exactly one, chosen from React.version. Which slot wins therefore
+    // depends on the React under test — that's the contract, and asserting it
+    // this way makes the test meaningful on both legs of the react-compat
+    // matrix rather than only under the pinned peer.
+    const react19Plus = Number.parseInt(React.version, 10) >= 19;
+    if (react19Plus) {
+      expect(propsRef.current).not.toBeNull();
+      expect(legacyRef.current).toBeNull();
+    } else {
+      expect(legacyRef.current).not.toBeNull();
+      expect(propsRef.current).toBeNull();
+    }
+  });
+
+  it("does not emit React's ref-slot deprecation warning for a plain element render prop", () => {
+    const warnings: string[] = [];
+    const spy = vi.spyOn(console, "error").mockImplementation((...args) => {
+      warnings.push(String(args[0]));
+    });
+
+    render(
+      <Probe
+        tag="button"
+        params={{ state: {}, props: { children: "x" }, render: <button type="button" /> }}
+      />,
+    );
+
+    spy.mockRestore();
+    // React 18: "`ref` is not a prop". React 19: "Accessing element.ref was
+    // removed". Either means we probed the wrong slot.
+    expect(warnings.filter((w) => /ref` is not a prop|element\.ref/.test(w))).toEqual([]);
   });
 });
 
