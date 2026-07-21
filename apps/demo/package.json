@@ -21,7 +21,7 @@
     "@hedgerow/reader": "workspace:*",
     "@tiptap/react": "^3.28.0",
     "@tiptap/starter-kit": "^3.28.0",
-    "astro": "^5.1.1",
+    "astro": "^7.1.3",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tiptap-markdown": "^0.9.0"
