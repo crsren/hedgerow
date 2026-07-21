@@ -145,6 +145,9 @@ jobs:
           echo "resolved react major: $major (expected ${{ matrix.react }})"
           test "$major" = "${{ matrix.react }}"
 
-      - run: pnpm --filter @hedgerow/react test
-      - run: pnpm --filter @hedgerow/react typecheck
+      # Via turbo, not `pnpm --filter` directly: the typecheck/test tasks
+      # declare `dependsOn: ["^build"]`, so this builds @hedgerow/comments
+      # first. Without it, packages/react can't resolve the workspace dep and
+      # typecheck fails with TS2307 on every import.
+      - run: pnpm turbo run typecheck test --filter=@hedgerow/react --force
 
