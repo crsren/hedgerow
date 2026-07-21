@@ -14,20 +14,20 @@
     "e2e:install": "playwright install chromium"
   },
   "dependencies": {
-    "@astrojs/react": "^4.2.0",
+    "@astrojs/react": "^5.0.7",
     "@hedgerow/comments": "workspace:*",
     "@hedgerow/publish": "workspace:*",
     "@hedgerow/react": "workspace:*",
     "@hedgerow/reader": "workspace:*",
     "@tiptap/react": "^3.28.0",
     "@tiptap/starter-kit": "^3.28.0",
-    "astro": "^5.1.1",
+    "astro": "^6.4.8",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
     "tiptap-markdown": "^0.9.0"
   },
   "devDependencies": {
-    "@astrojs/check": "^0.9.4",
+    "@astrojs/check": "^0.9.9",
     "@atproto/api": "^0.20.0",
     "@atproto/dev-env": "^0.5.36",
     "@playwright/test": "^1.49.1",
