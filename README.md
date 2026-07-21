@@ -2,10 +2,11 @@
 
 An open-source toolkit that gives a personal website a social layer, built on the [AT Protocol](https://atproto.com).
 
-Two halves:
+Three parts:
 
 - **Publish** your posts as portable `site.standard.*` records in your own atproto repo — your writing lives on the open network, not locked inside one host's database.
 - **Render** live Bluesky comments and likes directly on your own site, so the conversation about a post happens where people already are, but shows up where you own it.
+- **Reply in place** — a visitor signs into their own Bluesky account on your page and posts a real reply from their own repo, without a round trip to bsky.app.
 
 The thesis: AI has removed the effort of building a website. A static site is now a weekend, not a project. The one thing platforms still hold over a personal site is the social layer — the replies, the reach, the being-seen. Hedgerow moves that layer onto the open protocol, so the last reason to stay on a platform goes away.
 
@@ -19,6 +20,7 @@ hedgerow/
 │   ├── publish/         @hedgerow/publish — markdown → site.standard.* records on a PDS, and read them back
 │   ├── comments/        @hedgerow/comments — zero-dep read core: resolve a post, fetch + normalise its comments/likes
 │   ├── react/           @hedgerow/react — headless React components and hooks over the comments core
+│   ├── reader/          @hedgerow/reader — browser OAuth identity for a page visitor, so they can reply in place
 │   ├── embed/           @hedgerow/embed — drop-in web component for non-React sites                     (planned)
 │   └── astro/           @hedgerow/astro — Astro integration                                             (planned)
 └── tooling/
@@ -26,6 +28,19 @@ hedgerow/
 ```
 
 Managed with pnpm workspaces, [Turborepo](https://turbo.build), and [Changesets](https://github.com/changesets/changesets). ESM-only.
+
+The four published packages split along two axes: **who is acting** (the author, a visitor, or nobody) and **what it costs your bundle**.
+
+| Package | Runs | Needs auth | Depends on |
+| --- | --- | --- | --- |
+| `@hedgerow/comments` | anywhere | no | nothing at all |
+| `@hedgerow/react` | React app | no | `@hedgerow/comments`, React as a peer |
+| `@hedgerow/reader` | browser | visitor's own OAuth | `@atproto/api`, `@atproto/oauth-client-browser` |
+| `@hedgerow/publish` | Node (core is isomorphic) | author's own OAuth | `@atproto/api`, `gray-matter`, Node OAuth client |
+
+Reading a public thread needs no identity, so `@hedgerow/comments` carries no dependencies and `@hedgerow/react` adds only React. Replying does need identity, so it lives in `@hedgerow/reader` — a site that only *displays* comments never pulls in an OAuth client for a login button its visitors may never press.
+
+The seam that keeps that true: **`@hedgerow/react` never imports `@hedgerow/reader`.** The `Reply.*` parts take `session` and `onSubmit` as plain props, so reader identity is injected rather than baked in, and the render layer works just as well against your own server-backed auth or with no reply composer at all. `Editor.*` follows the same rule for `@hedgerow/publish`. The demo app is what composes them — see [`docs/architecture.md`](./docs/architecture.md) for the full dependency rules.
 
 ## Quickstart
 
@@ -75,6 +90,16 @@ Because a record write requires a real login, there is deliberately **no headles
 Persist `result.state` between runs so reruns reuse the same record keys and skip unchanged writes. Verify what landed in your repo at [pdsls.dev](https://pdsls.dev).
 
 The demo wraps all of this: `pnpm --filter @hedgerow/demo run publish:pds` (set `ATP_IDENTIFIER` to hint the account; add `--print-auth-url` to print the login URL instead of opening a browser).
+
+## Rendering the social layer
+
+Each read-side package documents its own surface:
+
+- [`@hedgerow/comments`](./packages/comments) — the framework-agnostic core, if you're rendering the thread yourself or wrapping it for another framework.
+- [`@hedgerow/react`](./packages/react) — the headless `Comments.*`, `Likes.*`, `Reply.*` and `Editor.*` parts, plus guidance on auth-on-demand, optimistic replies, SSR seeding, entry/exit animation, and rendering many threads on one index page.
+- [`@hedgerow/reader`](./packages/reader) — browser OAuth for a visitor, client-id setup for local dev vs. a real deployment, and `createReply()`.
+
+`apps/demo` wires all three together: `apps/demo/src/components/CommentThread.tsx` is the reference for feeding a `@hedgerow/reader` session into `@hedgerow/react`'s `Reply.Root`.
 
 ## License
 
