@@ -14,6 +14,12 @@ updates:
     directory: "/"
     schedule:
       interval: monthly
+    # pnpm-lock.yaml is deliberately not code-owned (a lockfile diff is not
+    # reviewable, and owning it would re-impose approval on every bump). This
+    # is the compensating control: never pull a version published hours ago,
+    # which is the window most npm supply-chain compromises are caught in.
+    cooldown:
+      default-days: 5
     commit-message:
       prefix: "chore"
     # Group only minor/patch dev-tooling updates. Grouping MAJORS was a

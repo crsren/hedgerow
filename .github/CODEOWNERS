@@ -1,32 +1,63 @@
-# Code owners.
+# Code owners — ATTENTION ROUTING, not a security boundary.
 #
-# This file only has teeth if `main` has branch protection with "Require review
-# from Code Owners" enabled. Without that it is documentation. See
-# CONTRIBUTING.md ("How a release actually reaches npm") for why that matters.
+# Be honest about what this does. Agents currently commit and open PRs using
+# the maintainer's own GitHub identity, so an agent IS the code owner and can
+# satisfy any review requirement here. Against a confused or hijacked agent
+# this stops nothing. What it does do is force the question "why is this PR
+# touching that file?" at the moment of merge, which is worth having.
 #
-# The point is not to gate every change — it's to make the RELEASE MECHANISM
-# itself reviewable. npm's trusted publisher is bound to a repo + workflow
-# filename, not to the workflow's contents: whoever can change release.yml on
-# main can publish arbitrary bytes as @hedgerow/*. In a repo where agents author
-# much of the code, that file deserves a different level of attention than a
-# component.
+# (The change that would give this teeth is a separate GitHub identity for
+# agents. Then GitHub's own self-approval prohibition does real work and every
+# gate below acquires meaning. Until then, read the list as a checklist, not a
+# lock.)
 #
-# "Why is this PR editing release.yml?" is a question worth stopping on.
-# "Do I want to release 0.2.0?" mostly isn't — which is why the npm-publish
-# environment deliberately has no required reviewer.
+# SELECTION RULE: own the paths where the diff does not show the danger, or
+# where a mistake is irreversible. Deliberately NOT everything — a review you
+# always approve is worse than no review, because it launders unread changes
+# as reviewed.
 
-# Everything, by default.
-*                           @crsren
-
-# The release mechanism: what publishes, how, and with what credentials.
-/.github/workflows/         @crsren
-/.github/CODEOWNERS         @crsren
+# --- the release mechanism -------------------------------------------------
+# npm's trusted publisher binds to a workflow FILENAME, not its contents:
+# whoever can edit release.yml can publish anything as @hedgerow/*.
+/.github/                   @crsren
+# The release gates themselves. A one-line edit silently disables a control.
 /scripts/                   @crsren
+# Root package.json defines the gate CHAIN: `release` is
+# `verify:packaging && api:check && check-changesets && changeset publish`.
+# Rewriting it to just `changeset publish` disables every release-time gate
+# without touching .github/ or scripts/.
+/package.json               @crsren
+# Cache keys decide whether a gate actually re-ran. Get `inputs`/
+# `globalDependencies` wrong and api:check verifies the committed report
+# against a stale dist/ and passes green.
+/turbo.json                 @crsren
+# One `registry=` line redirects every CI install — inside the job that mints
+# the npm OIDC credential.
+/.npmrc                     @crsren
+# What publishes, at what version, under which dist-tag.
 /.changeset/config.json     @crsren
-
-# What each package ships to npm — `files`, `exports`, `publishConfig`.
+/.changeset/pre.json        @crsren
+# files / exports / publishConfig decide what actually reaches npm.
 /packages/*/package.json    @crsren
 
-# The committed public API + behavioural contract. A diff here is the evidence
-# for the version bump, so it should never change without someone reading it.
-/api-report/                @crsren
+# --- the irreversible one --------------------------------------------------
+# Lexicons define records written into OTHER PEOPLE'S atproto repos, where they
+# stay permanently and cannot be migrated. The behaviour contract catches
+# CHANGES to a record shape; nothing catches a bad shape at introduction. This
+# is the most irreversible artifact in the project — a burned version number is
+# cheap by comparison.
+/packages/publish/lexicons/ @crsren
+
+# --- deliberately NOT owned ------------------------------------------------
+# Recording these so an absence reads as a decision, not an oversight.
+#
+# /api-report/     Generated. api:check fails if it is stale, and the changeset
+#                  gate already fails a `patch` that removes declarations. A
+#                  review checkbox on a generated file is a click on something
+#                  already mechanically enforced.
+# pnpm-lock.yaml   The least reviewable diff in the repo — owning it buys a
+#                  rubber stamp, and re-imposes approval on every Dependabot
+#                  npm PR, which is the friction this scope exists to remove.
+#                  Mitigated instead by `onlyBuiltDependencies` (no arbitrary
+#                  postinstall) and dependabot's `cooldown` (never pull a
+#                  version published hours ago).
