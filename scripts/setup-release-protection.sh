@@ -52,7 +52,7 @@ gh api -X PUT "repos/$REPO/branches/$BRANCH/protection" \
 {
   "required_status_checks": {
     "strict": true,
-    "contexts": ["build / typecheck / test", "changeset policy"]
+    "contexts": ["build / typecheck / test", "changeset policy", "react 18", "react 19"]
   },
   "enforce_admins": true,
   "required_pull_request_reviews": {

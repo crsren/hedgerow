@@ -17,6 +17,12 @@ on:
   push:
     branches: [main, changeset-release/main]
 
+# Nothing in CI writes to the repo. release.yml declares its own (wider)
+# permissions; this keeps the token that runs unpinned third-party actions on
+# every PR — including forks — read-only.
+permissions:
+  contents: read
+
 # Cancel superseded runs on the same ref (e.g. rapid pushes to a PR).
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
