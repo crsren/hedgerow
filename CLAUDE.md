@@ -55,6 +55,13 @@ order, a new throw path, a stricter runtime validation. If you changed
 behaviour a consumer depends on, that is breaking regardless of what the
 report says.
 
+## Identity
+
+If you have your own GitHub account (e.g. `@jack-bot-slims`), use it — do not
+push as `@crsren`. The CODEOWNERS gate on the release mechanism only has teeth
+against an author who is not a code owner, and self-approval is what GitHub
+blocks. Borrowing the maintainer's identity silently disables that gate.
+
 ## What you must never do without being asked
 
 - **Publish.** Not `npm publish`, not `pnpm release`, not `changeset publish`.

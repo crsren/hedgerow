@@ -69,6 +69,9 @@ jobs:
   changesets:
     name: changeset policy
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # only to post the API-diff comment below
     steps:
       # Presence needs the base branch to diff against, so fetch full history.
       - uses: actions/checkout@v7
@@ -105,6 +108,37 @@ jobs:
           github.head_ref == 'changeset-release/main' ||
           contains(github.event.pull_request.labels.*.name, 'no-changeset')
         run: node scripts/check-changesets.mjs
+
+      # api-report/ is deliberately NOT code-owned — it's generated, and
+      # api:check plus the bump gate already enforce it mechanically. But the
+      # reason it exists is to be READ when choosing a version bump, and a file
+      # nobody opens is not read. Surfacing the diff as a PR comment puts it in
+      # front of a human at the moment of the decision, without adding a merge
+      # gate on generated output.
+      - name: comment the public API diff
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.number }}
+        run: |
+          diff=$(git diff "origin/${{ github.base_ref }}...HEAD" -- api-report/ || true)
+          if [ -z "$diff" ]; then
+            echo "No public API change."
+            exit 0
+          fi
+          removed=$(printf '%s\n' "$diff" | grep -c '^-[^-]' || true)
+          added=$(printf '%s\n' "$diff" | grep -c '^+[^+]' || true)
+          {
+            echo "### Public API / behaviour change"
+            echo
+            echo "\`$removed\` line(s) removed, \`$added\` added. Removals mean something left the"
+            echo "public surface — breaking, which pre-1.0 means a **minor** bump."
+            echo
+            echo '```diff'
+            printf '%s\n' "$diff" | head -300
+            echo '```'
+          } > /tmp/api-comment.md
+          gh pr comment "$PR" --body-file /tmp/api-comment.md --edit-last --create-if-none
 
   # @hedgerow/react declares `react: ^18 || ^19`, but the workspace pins 18 —
   # so half that claim was never exercised. This leg runs the react suite
