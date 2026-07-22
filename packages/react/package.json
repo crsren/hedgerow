@@ -1,6 +1,6 @@
 {
   "name": "@hedgerow/react",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Headless, unstyled React components and hooks for rendering Bluesky comments and likes on your own site. Behaviour, accessibility, and state only — you bring the styles.",
   "keywords": [
     "atproto",
