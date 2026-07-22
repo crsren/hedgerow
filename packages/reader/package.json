@@ -56,7 +56,7 @@
     "coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@atproto/api": "^0.20.30",
+    "@atproto/api": "^0.20.31",
     "@atproto/oauth-client-browser": "^0.4.9"
   },
   "devDependencies": {
