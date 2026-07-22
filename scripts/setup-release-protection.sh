@@ -47,11 +47,19 @@ fi
 echo
 echo "==> Branch protection on $BRANCH"
 # Required checks are named after the `name:` of each job in ci.yml.
+#
+# `strict: false` deliberately: strict means "branch must be up to date with
+# main before merging", which on a single-maintainer repo mostly means
+# re-running CI on every PR every time anything else lands, and leaves
+# dependabot branches stuck at BEHIND until someone updates them by hand. The
+# protection that matters here is the CHECKS themselves plus the CODEOWNERS
+# review, and those run on the merge result regardless. If two PRs ever do
+# interact badly, main's own push-triggered CI catches it.
 gh api -X PUT "repos/$REPO/branches/$BRANCH/protection" \
   --input - <<'JSON'
 {
   "required_status_checks": {
-    "strict": true,
+    "strict": false,
     "contexts": ["build / typecheck / test", "changeset policy", "react 18", "react 19"]
   },
   "enforce_admins": true,
