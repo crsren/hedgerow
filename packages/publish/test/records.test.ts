@@ -5,6 +5,7 @@ import {
   publicationRecord,
   toPlainText,
 } from "../src/records.js";
+import { VIA_KEY, VIA_VALUE } from "../src/types.js";
 
 const POST = `---
 title: "Back to Web One"
@@ -128,5 +129,29 @@ describe("documentRecord", () => {
     expect(rec.content).toEqual({ $type: "pub.hedgerow.content.markdown", markdown: post.body });
     // The plaintext mirror is always present alongside the rich member.
     expect(rec.textContent).toBe(toPlainText(post.body));
+  });
+
+  it("stamps tool attribution on every document (SLIMS-71)", () => {
+    const rec = documentRecord(parsePost(POST, "fallback"), {
+      siteUri: "at://did:plc:x/site.standard.publication/abc",
+    });
+    expect(rec[VIA_KEY]).toBe(VIA_VALUE);
+    // Pinned literally, not via the constants: the key and value ARE the
+    // contract a downstream filter matches on, so renaming either is a
+    // breaking change to records already in the wild and should fail here
+    // rather than silently re-stamp everyone's repo on the next publish.
+    expect(rec["pub.hedgerow.via"]).toBe("@hedgerow/publish");
+  });
+
+  it("keeps the stamp constant, so republishing an unchanged post stays a no-op", () => {
+    // publishSite skips the write when the record it builds matches the live
+    // one (updatedAt aside), so anything varying in the stamp — a version, a
+    // timestamp — would rewrite every document on every release and bump
+    // updatedAt on posts nobody touched.
+    const opts = { siteUri: "at://did:plc:x/site.standard.publication/abc" };
+    const a = documentRecord(parsePost(POST, "fallback"), opts);
+    const b = documentRecord(parsePost(POST, "fallback"), opts);
+    expect(a[VIA_KEY]).toBe(b[VIA_KEY]);
+    expect(JSON.stringify(a)).toBe(JSON.stringify(b));
   });
 });

@@ -5,7 +5,7 @@
 // See CONTRIBUTING.md ("Choosing the version bump").
 
 import { Publisher } from "./index.js";
-export { BSKY_POST_NSID, BlobRef, DOCUMENT_NSID, DocumentContent, DocumentOptions, DocumentRecord, MARKDOWN_CONTENT_NSID, MarkdownContent, PUBLICATION_NSID, ParsedBskyPostUri, ParsedPost, PublicationConfig, PublicationRecord, PublishOptions, PublishResult, PublishState, ReadSiteOptions, RepoRecord, ResolveBskyPostRefOptions, ResolveHandleOptions, ResolvePdsOptions, ShareOptions, Site, SiteDocument, StrongRef, UnshareResult, agentPublisher, documentRecord, emptyState, isRecordNotFound, listRecords, parseBskyPostUri, parsePost, publicationRecord, publishSite, readSite, readSiteFromPds, resolveBskyPostRef, resolveDid, resolvePds, toPlainText, unshare } from "./index.js";
+export { BSKY_POST_NSID, BlobRef, DOCUMENT_NSID, DocumentContent, DocumentOptions, DocumentRecord, MARKDOWN_CONTENT_NSID, MarkdownContent, PUBLICATION_NSID, ParsedBskyPostUri, ParsedPost, PublicationConfig, PublicationRecord, PublishOptions, PublishResult, PublishState, ReadSiteOptions, RepoRecord, ResolveBskyPostRefOptions, ResolveHandleOptions, ResolvePdsOptions, ShareOptions, Site, SiteDocument, StrongRef, UnshareResult, VIA_KEY, VIA_VALUE, agentPublisher, documentRecord, emptyState, isRecordNotFound, listRecords, parseBskyPostUri, parsePost, publicationRecord, publishSite, readSite, readSiteFromPds, resolveBskyPostRef, resolveDid, resolvePds, toPlainText, unshare } from "./index.js";
 import * as _atproto_oauth_client_node from "@atproto/oauth-client-node";
 import "@atproto/api";
 interface OAuthPublisherOptions {

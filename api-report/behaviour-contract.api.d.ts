@@ -104,10 +104,12 @@
   STATE_FILE = "oauth-state.json"
   SESSION_FILE = "oauth-session.json"
 
-### packages/publish/src/types.ts — record collection names — the addresses records live at
+### packages/publish/src/types.ts — record collection names (the addresses records live at) and the tool-attribution stamp written into every document
   DOCUMENT_NSID = "site.standard.document" as const
   PUBLICATION_NSID = "site.standard.publication" as const
   MARKDOWN_CONTENT_NSID = "pub.hedgerow.content.markdown" as const
+  VIA_KEY = "pub.hedgerow.via" as const
+  VIA_VALUE = "@hedgerow/publish" as const
 
 ### packages/publish/src/read.ts — which third-party services an unconfigured read path talks to
   DEFAULT_RESOLVE_HANDLE_SERVICE = "https://public.api.bsky.app"

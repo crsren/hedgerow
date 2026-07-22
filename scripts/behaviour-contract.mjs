@@ -45,8 +45,8 @@ const TRACKED_CONSTANTS = [
   },
   {
     file: "packages/publish/src/types.ts",
-    names: ["DOCUMENT_NSID", "PUBLICATION_NSID", "MARKDOWN_CONTENT_NSID"],
-    why: "record collection names — the addresses records live at",
+    names: ["DOCUMENT_NSID", "PUBLICATION_NSID", "MARKDOWN_CONTENT_NSID", "VIA_KEY", "VIA_VALUE"],
+    why: "record collection names (the addresses records live at) and the tool-attribution stamp written into every document",
   },
   {
     file: "packages/publish/src/read.ts",

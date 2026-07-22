@@ -9,6 +9,7 @@ import { agentPublisher } from "../src/auth.js";
 import { emptyState, publishSite, unshare, type PublishState } from "../src/publish.js";
 import { parsePost } from "../src/records.js";
 import { listRecords, readSiteFromPds } from "../src/read.js";
+import { VIA_KEY, VIA_VALUE } from "../src/types.js";
 
 const POST = `---
 title: "Back to Web One"
@@ -69,6 +70,10 @@ describe("publish -> read round trip (local PDS)", () => {
     expect(doc.value.site).toBe(result.publicationUri);
     expect(doc.value.textContent).toContain("The web used to be");
     expect(doc.value.tags).toEqual(["atproto", "web"]);
+    // The whole premise of the via stamp is that a PDS carries fields the
+    // lexicon never declared. That's what the spec says; this asserts it
+    // against a real PDS rather than trusting the reading.
+    expect(doc.value[VIA_KEY]).toBe(VIA_VALUE);
   });
 
   it("is idempotent: re-publishing with saved state reuses rkeys and skips unchanged writes", async () => {
