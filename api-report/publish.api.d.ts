@@ -9,6 +9,8 @@ declare const PUBLICATION_NSID: "site.standard.publication";
 declare const DOCUMENT_NSID: "site.standard.document";
 declare const BSKY_POST_NSID: "app.bsky.feed.post";
 declare const MARKDOWN_CONTENT_NSID: "pub.hedgerow.content.markdown";
+declare const VIA_KEY: "pub.hedgerow.via";
+declare const VIA_VALUE: "@hedgerow/publish";
 interface StrongRef {
     uri: string;
     cid: string;
@@ -45,6 +47,7 @@ interface DocumentRecord {
     content?: DocumentContent;
     textContent?: string;
     bskyPostRef?: StrongRef;
+    [VIA_KEY]?: typeof VIA_VALUE;
 }
 interface PublicationConfig {
     url: string;
@@ -158,4 +161,4 @@ interface ReadSiteOptions extends ResolvePdsOptions {
     pds?: string;
 }
 declare function readSite(identifier: string, fetchImpl?: typeof fetch, opts?: ReadSiteOptions): Promise<Site>;
-export { BSKY_POST_NSID, type BlobRef, DOCUMENT_NSID, type DocumentContent, type DocumentOptions, type DocumentRecord, MARKDOWN_CONTENT_NSID, type MarkdownContent, PUBLICATION_NSID, type ParsedBskyPostUri, type ParsedPost, type PublicationConfig, type PublicationRecord, type PublishOptions, type PublishResult, type PublishState, type Publisher, type ReadSiteOptions, type RepoRecord, type ResolveBskyPostRefOptions, type ResolveHandleOptions, type ResolvePdsOptions, type ShareOptions, type Site, type SiteDocument, type StrongRef, type UnshareResult, agentPublisher, documentRecord, emptyState, isRecordNotFound, listRecords, parseBskyPostUri, parsePost, publicationRecord, publishSite, readSite, readSiteFromPds, resolveBskyPostRef, resolveDid, resolvePds, toPlainText, unshare };
+export { BSKY_POST_NSID, type BlobRef, DOCUMENT_NSID, type DocumentContent, type DocumentOptions, type DocumentRecord, MARKDOWN_CONTENT_NSID, type MarkdownContent, PUBLICATION_NSID, type ParsedBskyPostUri, type ParsedPost, type PublicationConfig, type PublicationRecord, type PublishOptions, type PublishResult, type PublishState, type Publisher, type ReadSiteOptions, type RepoRecord, type ResolveBskyPostRefOptions, type ResolveHandleOptions, type ResolvePdsOptions, type ShareOptions, type Site, type SiteDocument, type StrongRef, type UnshareResult, VIA_KEY, VIA_VALUE, agentPublisher, documentRecord, emptyState, isRecordNotFound, listRecords, parseBskyPostUri, parsePost, publicationRecord, publishSite, readSite, readSiteFromPds, resolveBskyPostRef, resolveDid, resolvePds, toPlainText, unshare };

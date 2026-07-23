@@ -4,6 +4,8 @@ import {
   DOCUMENT_NSID,
   MARKDOWN_CONTENT_NSID,
   PUBLICATION_NSID,
+  VIA_KEY,
+  VIA_VALUE,
   type DocumentRecord,
   type PublicationRecord,
   type StrongRef,
@@ -119,5 +121,10 @@ export function documentRecord(post: ParsedPost, opts: DocumentOptions): Documen
     // textContent even if it doesn't know the content union's markdown member.
     content: { $type: MARKDOWN_CONTENT_NSID, markdown: post.body },
     textContent: toPlainText(post.body),
+    // Tool attribution, outside the lexicon and ignored by readers that don't
+    // know it (SLIMS-71). Unconditional: a stamp only some documents carry
+    // can't be filtered on, since absence would be ambiguous between "not
+    // hedgerow" and "hedgerow, opted out".
+    [VIA_KEY]: VIA_VALUE,
   };
 }

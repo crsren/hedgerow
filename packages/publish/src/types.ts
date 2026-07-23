@@ -14,6 +14,36 @@ export const BSKY_POST_NSID = "app.bsky.feed.post" as const;
  */
 export const MARKDOWN_CONTENT_NSID = "pub.hedgerow.content.markdown" as const;
 
+/**
+ * Key of the tool-attribution stamp we add to every document (SLIMS-71).
+ *
+ * Reverse-DNS rather than a bare `via`, for one reason: `via` is exactly the
+ * name standard.site would reach for if it ever adds tool attribution of its
+ * own, and a collision there would mean our string sitting in a field the
+ * lexicon declares as some other type — in every adopter's repo, on records we
+ * can't reach. atproto has no blessed convention for third-party extra keys
+ * (the lexicon spec floats `x-` as a POSSIBLE FUTURE mechanism, and `$`
+ * prefixes are reserved for the protocol), so a namespace we already own is
+ * the only collision-proof option available.
+ *
+ * Safe to add because unknown fields are carried, not stripped: PDSes don't
+ * validate against lexicons at all, and the lexicon spec says consumers should
+ * ignore fields they don't recognise. So this is inert to every reader except
+ * one looking for it. See https://atproto.com/specs/lexicon.
+ */
+export const VIA_KEY = "pub.hedgerow.via" as const;
+
+/**
+ * Value of that stamp: the tool, deliberately WITHOUT a version.
+ *
+ * A version here would be re-stamped on every release, and since `publishSite`
+ * decides whether to write by comparing the record it built against the live
+ * one, that would rewrite every document and bump every `updatedAt` each time
+ * a consumer upgraded — turning a dependency bump into "all my posts were
+ * edited today". The stamp answers "what published this", not "which build".
+ */
+export const VIA_VALUE = "@hedgerow/publish" as const;
+
 /** strongRef (com.atproto.repo.strongRef): a specific, verified record. */
 export interface StrongRef {
   uri: string;
@@ -92,4 +122,16 @@ export interface DocumentRecord {
    * is a real Bluesky post, not the document record itself.
    */
   bskyPostRef?: StrongRef;
+  /**
+   * Tool attribution — `"@hedgerow/publish"`, stamped on every document we
+   * write (SLIMS-71). Not part of the standard.site lexicon; it rides along as
+   * an extra field so a reader can tell hedgerow-published documents apart
+   * from any other standard.site producer. See {@link VIA_KEY} for why the key
+   * is namespaced and {@link VIA_VALUE} for why it carries no version.
+   *
+   * Optional on the type because documents written before this existed (or by
+   * another tool) simply don't have it — treat absence as "unknown", never as
+   * "not hedgerow".
+   */
+  [VIA_KEY]?: typeof VIA_VALUE;
 }
