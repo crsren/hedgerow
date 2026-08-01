@@ -29,8 +29,8 @@
   "devDependencies": {
     "@astrojs/check": "^0.9.9",
     "@atproto/api": "^0.20.31",
-    "@atproto/dev-env": "^0.5.36",
-    "@playwright/test": "^1.49.1",
+    "@atproto/dev-env": "^0.5.39",
+    "@playwright/test": "^1.62.0",
     "@types/markdown-it": "^14.1.2",
     "@types/react": "^18.3.18",
     "@types/react-dom": "^18.3.5",
