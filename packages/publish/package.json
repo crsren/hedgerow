@@ -72,7 +72,7 @@
     "gray-matter": "^4.0.3"
   },
   "devDependencies": {
-    "@atproto/dev-env": "^0.5.36",
+    "@atproto/dev-env": "^0.5.39",
     "@atproto/lexicon": "^0.7.7",
     "@hedgerow/tsconfig": "workspace:*",
     "@types/node": "^22.10.2",
