@@ -3,7 +3,7 @@ import MarkdownIt from "markdown-it";
 import Base from "../layouts/Base.astro";
 import { loadSite, loadSiteFresh, slugOf } from "../lib/site";
 import CommentThread from "../components/CommentThread";
-import type { DocumentRecord } from "@hedgerow/publish";
+import { isMarkdownContent, type DocumentRecord } from "@hedgerow/publish";
 import { fetchLikes, fetchThread, type LikesResult, type ThreadResult } from "@hedgerow/comments";
 
 // html: false (the default) is the sanitization here: raw HTML in the
@@ -90,7 +90,7 @@ try {
 // HTML server-side, when present — falling back to textContent's plaintext
 // paragraphs (exactly as before) for documents that only carry the plain
 // mirror (older records, or a loose standard.site document from elsewhere).
-const bodyHtml = doc.content?.markdown ? md.render(doc.content.markdown) : null;
+const bodyHtml = isMarkdownContent(doc.content) ? md.render(doc.content.markdown) : null;
 
 // textContent is plaintext; the only structure it carries is paragraph breaks
 // (double newlines). Split those back into <p> elements — single newlines within

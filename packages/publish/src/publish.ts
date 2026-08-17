@@ -4,7 +4,7 @@
 // bump updatedAt — updatedAt only moves when a post actually changed).
 import { TID } from "@atproto/common-web";
 import { resolveBskyPostRef, type ResolveBskyPostRefOptions } from "./anchor.js";
-import type { Publisher } from "./auth.js";
+import { supportsConditionalWrites, type Publisher } from "./auth.js";
 import {
   documentRecord,
   publicationRecord,
@@ -109,12 +109,25 @@ async function upsertIfChanged(
   rkey: string,
   record: Record<string, unknown>,
 ): Promise<{ uri: string; changed: boolean }> {
-  const existing = await publisher.getRecord(collection, rkey);
+  const conditional = supportsConditionalWrites(publisher);
+  const snapshot = conditional
+    ? await publisher.getRecordWithCid(collection, rkey)
+    : null;
+  const existing = conditional
+    ? (snapshot?.value ?? null)
+    : await publisher.getRecord(collection, rkey);
   if (existing && sameContent(existing, record)) {
     return { uri: `at://${publisher.did}/${collection}/${rkey}`, changed: false };
   }
   const toWrite = existing ? { ...record, updatedAt: new Date().toISOString() } : record;
-  const res = await publisher.putRecord(collection, rkey, toWrite);
+  const res = await publisher.putRecord(
+    collection,
+    rkey,
+    toWrite,
+    conditional
+      ? { swapRecord: snapshot?.cid ?? null }
+      : undefined,
+  );
   return { uri: res.uri, changed: true };
 }
 
@@ -201,7 +214,8 @@ export async function publishSite(
           // NEW share, not reusing one already created for this slug.
           bskyPostRef = persisted;
         } else if (options.share?.enabled && post.share !== false) {
-          const canonicalUrl = `${siteOrigin}/${post.slug}`;
+          const path = post.path ?? `/${post.slug}`;
+          const canonicalUrl = `${siteOrigin}${path.startsWith("/") ? path : `/${path}`}`;
           try {
             bskyPostRef = await createSharePost(publisher, post, canonicalUrl, options.share);
             next.shares[post.slug] = bskyPostRef;
@@ -252,7 +266,16 @@ export async function publishSite(
       const rkey = next.docs[slug];
       if (rkey) {
         try {
-          await publisher.deleteRecord(DOCUMENT_NSID, rkey);
+          if (supportsConditionalWrites(publisher)) {
+            const current = await publisher.getRecordWithCid(DOCUMENT_NSID, rkey);
+            if (current) {
+              await publisher.deleteRecord(DOCUMENT_NSID, rkey, {
+                swapRecord: current.cid,
+              });
+            }
+          } else {
+            await publisher.deleteRecord(DOCUMENT_NSID, rkey);
+          }
         } catch (err) {
           // Already-gone records are fine; warn rather than abort the run.
           warnings.push(
@@ -298,7 +321,12 @@ async function createSharePost(
     },
   };
   const rkey = TID.nextStr();
-  const res = await publisher.putRecord(BSKY_POST_NSID, rkey, record);
+  const res = await publisher.putRecord(
+    BSKY_POST_NSID,
+    rkey,
+    record,
+    supportsConditionalWrites(publisher) ? { swapRecord: null } : undefined,
+  );
   return { uri: res.uri, cid: res.cid };
 }
 
@@ -352,7 +380,11 @@ export async function unshare(
 
   let removed = false;
   try {
-    await publisher.deleteRecord(BSKY_POST_NSID, shareRkey);
+    await publisher.deleteRecord(
+      BSKY_POST_NSID,
+      shareRkey,
+      supportsConditionalWrites(publisher) ? { swapRecord: shareRef.cid } : undefined,
+    );
     removed = true;
   } catch (err) {
     warnings.push(
@@ -365,14 +397,26 @@ export async function unshare(
   const docRkey = next.docs[slug];
   if (docRkey) {
     try {
-      const existing = await publisher.getRecord(DOCUMENT_NSID, docRkey);
+      const snapshot = supportsConditionalWrites(publisher)
+        ? await publisher.getRecordWithCid(DOCUMENT_NSID, docRkey)
+        : null;
+      const existing = supportsConditionalWrites(publisher)
+        ? (snapshot?.value ?? null)
+        : await publisher.getRecord(DOCUMENT_NSID, docRkey);
       const currentRef = (existing as { bskyPostRef?: StrongRef } | null)?.bskyPostRef;
       if (existing && currentRef?.uri === shareRef.uri) {
         const { bskyPostRef: _drop, ...rest } = existing;
-        await publisher.putRecord(DOCUMENT_NSID, docRkey, {
-          ...rest,
-          updatedAt: new Date().toISOString(),
-        });
+        await publisher.putRecord(
+          DOCUMENT_NSID,
+          docRkey,
+          {
+            ...rest,
+            updatedAt: new Date().toISOString(),
+          },
+          supportsConditionalWrites(publisher)
+            ? { swapRecord: snapshot!.cid }
+            : undefined,
+        );
       }
     } catch (err) {
       warnings.push(

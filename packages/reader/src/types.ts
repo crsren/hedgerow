@@ -40,14 +40,29 @@ export interface CreateReplyInput {
  */
 export interface PublisherLike {
   did: string;
+  readonly supportsSwapRecord: true;
   putRecord(
     collection: string,
     rkey: string,
     record: Record<string, unknown>,
+    options?: { swapRecord?: string | null },
   ): Promise<{ uri: string; cid: string }>;
   /** Existing record value, or null if absent/not found. */
   getRecord(collection: string, rkey: string): Promise<Record<string, unknown> | null>;
-  deleteRecord(collection: string, rkey: string): Promise<void>;
+  /** Existing record plus its conflict token, or null if absent/not found. */
+  getRecordWithCid(
+    collection: string,
+    rkey: string,
+  ): Promise<{
+    uri: string;
+    cid: string;
+    value: Record<string, unknown>;
+  } | null>;
+  deleteRecord(
+    collection: string,
+    rkey: string,
+    options?: { swapRecord?: string },
+  ): Promise<void>;
 }
 
 export interface Reader {

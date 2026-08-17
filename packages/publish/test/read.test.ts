@@ -4,7 +4,12 @@
 // real in-process PDS; here we cover the identity-resolution layer above them
 // and its error paths.
 import { describe, expect, it } from "vitest";
-import { resolveDid, resolvePds, readSite } from "../src/read.js";
+import {
+  AmbiguousPublicationError,
+  resolveDid,
+  resolvePds,
+  readSite,
+} from "../src/read.js";
 import { DOCUMENT_NSID, PUBLICATION_NSID } from "../src/types.js";
 
 /** A fetch stub that records requested URLs and dispatches on the path. */
@@ -94,12 +99,24 @@ describe("readSite (resolve + read, end to end over injected fetch)", () => {
     {
       uri: `at://${DID}/${DOCUMENT_NSID}/older`,
       cid: "bafyold",
-      value: { $type: DOCUMENT_NSID, path: "/old", title: "Old", publishedAt: "2026-01-01T00:00:00Z" },
+      value: {
+        $type: DOCUMENT_NSID,
+        site: pubRecord.uri,
+        path: "/old",
+        title: "Old",
+        publishedAt: "2026-01-01T00:00:00Z",
+      },
     },
     {
       uri: `at://${DID}/${DOCUMENT_NSID}/newer`,
       cid: "bafynew",
-      value: { $type: DOCUMENT_NSID, path: "/new", title: "New", publishedAt: "2026-06-01T00:00:00Z" },
+      value: {
+        $type: DOCUMENT_NSID,
+        site: pubRecord.uri,
+        path: "/new",
+        title: "New",
+        publishedAt: "2026-06-01T00:00:00Z",
+      },
     },
   ];
 
@@ -123,9 +140,11 @@ describe("readSite (resolve + read, end to end over injected fetch)", () => {
 
     expect(site.publication?.name).toBe("crsren");
     expect(site.publicationUri).toBe(pubRecord.uri);
+    expect(site.publicationCid).toBe(pubRecord.cid);
     // documents come back newest-first regardless of listRecords order
     expect(site.documents.map((d) => d.value.path)).toEqual(["/new", "/old"]);
     expect(site.documents[0]!.uri).toBe(docs[1]!.uri);
+    expect(site.documents[0]!.cid).toBe(docs[1]!.cid);
   });
 
   it("reports a null publication when the repo has no publication record", async () => {
@@ -142,6 +161,73 @@ describe("readSite (resolve + read, end to end over injected fetch)", () => {
     const site = await readSite(DID, s.fetch);
     expect(site.publication).toBeNull();
     expect(site.publicationUri).toBeNull();
+    expect(site.publicationCid).toBeNull();
     expect(site.documents).toEqual([]);
+  });
+
+  it("filters documents to the selected publication", async () => {
+    const secondPublication = {
+      uri: `at://${DID}/${PUBLICATION_NSID}/second`,
+      cid: "bafysecond",
+      value: { $type: PUBLICATION_NSID, name: "Second", url: "https://second.example" },
+    };
+    const secondDocument = {
+      uri: `at://${DID}/${DOCUMENT_NSID}/second-doc`,
+      cid: "bafysecond-doc",
+      value: {
+        $type: DOCUMENT_NSID,
+        site: secondPublication.uri,
+        path: "/second",
+        title: "Second",
+        publishedAt: "2026-07-01T00:00:00Z",
+      },
+    };
+    const scopedDocs = docs.map((record) => ({
+      ...record,
+      value: { ...record.value, site: pubRecord.uri },
+    }));
+    const s = stub((url) => {
+      if (url.href.includes("plc.directory")) {
+        return { body: { service: [{ id: "#atproto_pds", serviceEndpoint: PDS }] } };
+      }
+      if (url.pathname.endsWith("com.atproto.repo.listRecords")) {
+        return url.searchParams.get("collection") === PUBLICATION_NSID
+          ? { body: { records: [pubRecord, secondPublication] } }
+          : { body: { records: [...scopedDocs, secondDocument] } };
+      }
+      throw new Error(`unexpected ${url.href}`);
+    });
+
+    const site = await readSite(DID, s.fetch, { publicationUrl: "https://second.example/" });
+
+    expect(site.publicationUri).toBe(secondPublication.uri);
+    expect(site.documents.map((document) => document.uri)).toEqual([secondDocument.uri]);
+  });
+
+  it("requires a scope when a repository contains multiple publications", async () => {
+    const s = stub((url) => {
+      if (url.href.includes("plc.directory")) {
+        return { body: { service: [{ id: "#atproto_pds", serviceEndpoint: PDS }] } };
+      }
+      if (url.pathname.endsWith("com.atproto.repo.listRecords")) {
+        return url.searchParams.get("collection") === PUBLICATION_NSID
+          ? {
+              body: {
+                records: [
+                  pubRecord,
+                  {
+                    ...pubRecord,
+                    uri: `at://${DID}/${PUBLICATION_NSID}/second`,
+                    value: { ...pubRecord.value, url: "https://second.example" },
+                  },
+                ],
+              },
+            }
+          : { body: { records: [] } };
+      }
+      throw new Error(`unexpected ${url.href}`);
+    });
+
+    await expect(readSite(DID, s.fetch)).rejects.toBeInstanceOf(AmbiguousPublicationError);
   });
 });

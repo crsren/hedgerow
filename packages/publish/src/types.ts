@@ -69,14 +69,51 @@ export interface MarkdownContent {
   blobs?: BlobRef[];
 }
 
+/** A rich-content union member Hedgerow does not know how to edit. */
+export interface UnknownDocumentContent {
+  $type: string;
+  [key: string]: unknown;
+}
+
 /**
  * site.standard.document's `content` field: an open union (no members in the
  * lexicon's own `refs`, `closed: false`) — `pub.hedgerow.content.markdown` is
- * the one member Hedgerow writes today. A `DocumentRecord` with a `content`
- * member ALWAYS also carries a `textContent` plaintext mirror (see below), so
- * a plain standard.site reader that doesn't know this member still renders.
+ * the one member Hedgerow writes today. Unknown members remain represented so
+ * a reader can render the plaintext mirror without pretending it can safely
+ * edit and round-trip the rich value.
  */
-export type DocumentContent = MarkdownContent;
+export type DocumentContent = MarkdownContent | UnknownDocumentContent;
+
+/** Runtime guard for the one rich-content member Hedgerow can round-trip. */
+export function isMarkdownContent(content: unknown): content is MarkdownContent {
+  if (typeof content !== "object" || content === null) return false;
+  const candidate = content as { $type?: unknown; markdown?: unknown };
+  return (
+    candidate.$type === MARKDOWN_CONTENT_NSID &&
+    typeof candidate.markdown === "string"
+  );
+}
+
+/** Raised when an editor would otherwise replace a rich-content format it cannot preserve. */
+export class UnsupportedDocumentContentError extends Error {
+  readonly contentType: string;
+
+  constructor(contentType: string) {
+    super(`unsupported document content type: ${contentType}`);
+    this.name = "UnsupportedDocumentContentError";
+    this.contentType = contentType;
+  }
+}
+
+/**
+ * Return a document's Markdown source. Unknown rich-content members throw so
+ * callers cannot silently overwrite them with the plaintext fallback.
+ */
+export function documentMarkdown(document: DocumentRecord): string | null {
+  if (!document.content) return null;
+  if (isMarkdownContent(document.content)) return document.content.markdown;
+  throw new UnsupportedDocumentContentError(document.content.$type);
+}
 
 /** site.standard.publication — the site itself (key: "tid", one per site). */
 export interface PublicationRecord {

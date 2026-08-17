@@ -61,6 +61,7 @@ interface AgentLike {
                     collection: string;
                     rkey: string;
                     record: Record<string, unknown>;
+                    swapRecord?: string | null;
                 }): Promise<{
                     data: {
                         uri: string;
@@ -73,6 +74,8 @@ interface AgentLike {
                     rkey: string;
                 }): Promise<{
                     data: {
+                        uri: string;
+                        cid?: string;
                         value: Record<string, unknown>;
                     };
                 }>;
@@ -80,6 +83,7 @@ interface AgentLike {
                     repo: string;
                     collection: string;
                     rkey: string;
+                    swapRecord?: string;
                 }): Promise<unknown>;
             };
         };
@@ -110,12 +114,22 @@ interface CreateReplyInput {
 }
 interface PublisherLike {
     did: string;
-    putRecord(collection: string, rkey: string, record: Record<string, unknown>): Promise<{
+    readonly supportsSwapRecord: true;
+    putRecord(collection: string, rkey: string, record: Record<string, unknown>, options?: {
+        swapRecord?: string | null;
+    }): Promise<{
         uri: string;
         cid: string;
     }>;
     getRecord(collection: string, rkey: string): Promise<Record<string, unknown> | null>;
-    deleteRecord(collection: string, rkey: string): Promise<void>;
+    getRecordWithCid(collection: string, rkey: string): Promise<{
+        uri: string;
+        cid: string;
+        value: Record<string, unknown>;
+    } | null>;
+    deleteRecord(collection: string, rkey: string, options?: {
+        swapRecord?: string;
+    }): Promise<void>;
 }
 interface Reader {
     restore(): Promise<ReaderSession | null>;

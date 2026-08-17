@@ -248,8 +248,17 @@ export function createReader(options: CreateReaderOptions = {}): Reader {
       }
       return {
         did,
-        async putRecord(collection, rkey, record) {
-          const res = await repo().putRecord({ repo: did, collection, rkey, record });
+        supportsSwapRecord: true,
+        async putRecord(collection, rkey, record, options) {
+          const res = await repo().putRecord({
+            repo: did,
+            collection,
+            rkey,
+            record,
+            ...(options && "swapRecord" in options
+              ? { swapRecord: options.swapRecord }
+              : {}),
+          });
           return { uri: res.data.uri, cid: res.data.cid };
         },
         async getRecord(collection, rkey) {
@@ -265,8 +274,31 @@ export function createReader(options: CreateReaderOptions = {}): Reader {
             throw err;
           }
         },
-        async deleteRecord(collection, rkey) {
-          await repo().deleteRecord({ repo: did, collection, rkey });
+        async getRecordWithCid(collection, rkey) {
+          try {
+            const res = await repo().getRecord({ repo: did, collection, rkey });
+            if (!res.data.cid) {
+              throw new Error(
+                `getRecord returned no cid: at://${did}/${collection}/${rkey}`,
+              );
+            }
+            return {
+              uri: res.data.uri,
+              cid: res.data.cid,
+              value: res.data.value,
+            };
+          } catch (err) {
+            if (isRecordNotFound(err)) return null;
+            throw err;
+          }
+        },
+        async deleteRecord(collection, rkey, options) {
+          await repo().deleteRecord({
+            repo: did,
+            collection,
+            rkey,
+            ...(options?.swapRecord ? { swapRecord: options.swapRecord } : {}),
+          });
         },
       };
     },

@@ -5,7 +5,13 @@ import {
   publicationRecord,
   toPlainText,
 } from "../src/records.js";
-import { VIA_KEY, VIA_VALUE } from "../src/types.js";
+import {
+  DOCUMENT_NSID,
+  UnsupportedDocumentContentError,
+  VIA_KEY,
+  VIA_VALUE,
+  documentMarkdown,
+} from "../src/types.js";
 
 const POST = `---
 title: "Back to Web One"
@@ -34,6 +40,17 @@ describe("parsePost", () => {
   it("falls back to the given slug", () => {
     const p = parsePost("---\ntitle: T\npublishedAt: 2026-01-01\n---\nbody", "my-slug");
     expect(p.slug).toBe("my-slug");
+  });
+
+  it("normalizes an explicit canonical path", () => {
+    const p = parsePost(
+      "---\ntitle: T\npublishedAt: 2026-01-01\npath: blog/my-post\n---\nbody",
+      "my-post",
+    );
+    expect(p.path).toBe("/blog/my-post");
+    expect(
+      documentRecord(p, { siteUri: "at://did:plc:x/site.standard.publication/abc" }).path,
+    ).toBe("/blog/my-post");
   });
 
   it("throws without a title", () => {
@@ -88,6 +105,34 @@ body`,
       uri: "at://did:plc:x/app.bsky.feed.post/3abc",
       cid: "bafyexplicit",
     });
+  });
+});
+
+describe("documentMarkdown", () => {
+  const base = {
+    $type: DOCUMENT_NSID,
+    site: "at://did:plc:x/site.standard.publication/abc",
+    title: "T",
+    publishedAt: "2026-01-01T00:00:00.000Z",
+  } as const;
+
+  it("returns Hedgerow Markdown and leaves plaintext-only documents explicit", () => {
+    expect(
+      documentMarkdown({
+        ...base,
+        content: { $type: "pub.hedgerow.content.markdown", markdown: "# Hello" },
+      }),
+    ).toBe("# Hello");
+    expect(documentMarkdown({ ...base, textContent: "Hello" })).toBeNull();
+  });
+
+  it("refuses to treat unknown rich content as editable Markdown", () => {
+    expect(() =>
+      documentMarkdown({
+        ...base,
+        content: { $type: "com.example.richtext", nodes: [] },
+      }),
+    ).toThrow(UnsupportedDocumentContentError);
   });
 });
 

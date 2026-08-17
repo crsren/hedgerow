@@ -98,6 +98,8 @@ export interface SiteDocument {
    * tag so the record and the live page point at each other. Null when the
    * document was shaped locally and doesn't live in a PDS (yet). */
   uri: string | null;
+  /** Record CID used for conflict-safe updates. Null only for locally-shaped documents. */
+  cid: string | null;
   value: DocumentRecord;
 }
 
@@ -105,7 +107,69 @@ export interface Site {
   publication: PublicationRecord | null;
   /** at:// URI of the publication record (null when shaped locally). */
   publicationUri: string | null;
+  /** CID of the publication record (null when shaped locally or absent). */
+  publicationCid: string | null;
   documents: SiteDocument[];
+}
+
+export interface ReadSiteScope {
+  /** Select an exact publication record when a repo contains more than one. */
+  publicationUri?: string;
+  /** Select by canonical publication URL. Trailing slashes are ignored. */
+  publicationUrl?: string;
+}
+
+/** More than one publication exists and the caller did not say which site it wants. */
+export class AmbiguousPublicationError extends Error {
+  readonly publications: string[];
+
+  constructor(publications: string[]) {
+    super(
+      `repository contains ${publications.length} publications; pass publicationUri or publicationUrl`,
+    );
+    this.name = "AmbiguousPublicationError";
+    this.publications = publications;
+  }
+}
+
+function canonicalUrl(value: string): string {
+  return value.replace(/\/+$/, "");
+}
+
+function selectPublication(
+  publications: RepoRecord<PublicationRecord>[],
+  scope: ReadSiteScope,
+): RepoRecord<PublicationRecord> | null {
+  if (scope.publicationUri) {
+    const selected = publications.find((record) => record.uri === scope.publicationUri);
+    if (!selected) throw new Error(`publication not found: ${scope.publicationUri}`);
+    return selected;
+  }
+  if (scope.publicationUrl) {
+    const expected = canonicalUrl(scope.publicationUrl);
+    const matches = publications.filter(
+      (record) => canonicalUrl(record.value.url) === expected,
+    );
+    if (matches.length > 1) {
+      throw new AmbiguousPublicationError(matches.map((record) => record.uri));
+    }
+    if (!matches[0]) throw new Error(`publication not found for URL: ${scope.publicationUrl}`);
+    return matches[0];
+  }
+  if (publications.length > 1) {
+    throw new AmbiguousPublicationError(publications.map((record) => record.uri));
+  }
+  return publications[0] ?? null;
+}
+
+function belongsToPublication(
+  document: DocumentRecord,
+  publication: RepoRecord<PublicationRecord>,
+): boolean {
+  return (
+    document.site === publication.uri ||
+    canonicalUrl(document.site) === canonicalUrl(publication.value.url)
+  );
 }
 
 /** Read a full site (publication + documents) directly from a PDS by repo DID. */
@@ -113,16 +177,22 @@ export async function readSiteFromPds(
   pds: string,
   did: string,
   fetchImpl: typeof fetch = fetch,
+  scope: ReadSiteScope = {},
 ): Promise<Site> {
   const [pubs, docs] = await Promise.all([
     listRecords<PublicationRecord>(pds, did, PUBLICATION_NSID, fetchImpl),
     listRecords<DocumentRecord>(pds, did, DOCUMENT_NSID, fetchImpl),
   ]);
+  const publication = selectPublication(pubs, scope);
+  const siteDocs = publication
+    ? docs.filter((record) => belongsToPublication(record.value, publication))
+    : docs;
   return {
-    publication: pubs[0]?.value ?? null,
-    publicationUri: pubs[0]?.uri ?? null,
-    documents: docs
-      .map((r) => ({ uri: r.uri, value: r.value }))
+    publication: publication?.value ?? null,
+    publicationUri: publication?.uri ?? null,
+    publicationCid: publication?.cid ?? null,
+    documents: siteDocs
+      .map((r) => ({ uri: r.uri, cid: r.cid, value: r.value }))
       .sort(
         (a, b) =>
           new Date(b.value.publishedAt).getTime() - new Date(a.value.publishedAt).getTime(),
@@ -130,7 +200,7 @@ export async function readSiteFromPds(
   };
 }
 
-export interface ReadSiteOptions extends ResolvePdsOptions {
+export interface ReadSiteOptions extends ResolvePdsOptions, ReadSiteScope {
   /**
    * Skip DID-document resolution (and therefore the PLC directory) entirely
    * and read straight from this PDS. The identifier is still resolved to a DID
@@ -148,8 +218,8 @@ export async function readSite(
 ): Promise<Site> {
   if (opts.pds) {
     const did = await resolveDid(identifier, fetchImpl, opts);
-    return readSiteFromPds(opts.pds, did, fetchImpl);
+    return readSiteFromPds(opts.pds, did, fetchImpl, opts);
   }
   const { did, pds } = await resolvePds(identifier, fetchImpl, opts);
-  return readSiteFromPds(pds, did, fetchImpl);
+  return readSiteFromPds(pds, did, fetchImpl, opts);
 }
