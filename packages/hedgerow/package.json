@@ -1,6 +1,6 @@
 {
   "name": "hedgerow",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "A curated AT Protocol toolkit for publishing a site and bringing Bluesky conversations home.",
   "keywords": [
     "atproto",

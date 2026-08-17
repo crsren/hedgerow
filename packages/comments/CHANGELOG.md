@@ -1,5 +1,18 @@
 # @hedgerow/comments
 
+## 0.3.0
+
+### Minor Changes
+
+- [#34](https://github.com/crsren/hedgerow/pull/34) [`247cbf3`](https://github.com/crsren/hedgerow/commit/247cbf39c64af3b0d7fe3007a678022735b50608) Thanks [@crsren](https://github.com/crsren)! - Add conflict-safe document authoring and publication-scoped reads. Document
+  and publication reads now retain record CIDs; browser and Node publisher
+  adapters support `swapRecord`; and new `createDocument`, `updateDocument`,
+  `deleteDocument`, and `startDiscussion` operations own TID generation, record
+  construction, and rollback. `readSite` now requires an explicit publication
+  scope when a repository contains multiple publications, and rich content is
+  typed as an open union: use `isMarkdownContent` or `documentMarkdown` before
+  editing instead of accessing `content.markdown` directly.
+
 ## 0.2.0
 
 ### Minor Changes
