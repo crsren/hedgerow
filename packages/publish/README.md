@@ -10,6 +10,10 @@ side of the toolkit — see [`@hedgerow/comments`](../comments) and
 [`@hedgerow/react`](../react) for rendering the social layer on your site, and
 [`@hedgerow/reader`](../reader) for a visitor's own identity.
 
+New applications normally consume the curated `hedgerow/site` and
+`hedgerow/node` entry points. This scoped package remains the lower-level
+protocol and compatibility surface.
+
 ## Install
 
 ```bash
@@ -34,8 +38,9 @@ which never touches a Node builtin.
 
 ## Publishing
 
-Authentication is **atproto OAuth** — there is no password or app-password to
-store. The first publish opens a browser; the session is then cached (in
+Authentication is **atproto OAuth** with granular publication, document and
+discussion-post permissions — there is no password or app-password to store.
+The first publish opens a browser; the session is then cached (in
 `~/.config/hedgerow`) and silently refreshed until you sign out.
 
 ```ts
@@ -97,6 +102,19 @@ Two related behaviours worth knowing:
 Verify what landed in your repo at [pdsls.dev](https://pdsls.dev).
 
 ## Editing safely in a browser
+
+The recommended high-level API is a publication-bound capability:
+
+```ts
+import { author } from "hedgerow/site";
+
+const writer = author(session, { ownerDid, publicationUri });
+await writer.updateDocument({ snapshot: current, document: draft });
+```
+
+It checks the signed-in DID, injects publication membership and exposes no raw
+collection/rkey selection. The lower-level operations below remain available
+for integrations that supply their own capability boundary.
 
 `createDocument`, `updateDocument`, and `deleteDocument` own the protocol
 details an editor should not reimplement. New records receive a TID key;

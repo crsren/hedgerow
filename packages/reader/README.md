@@ -1,5 +1,10 @@
 # @hedgerow/reader
 
+Compatibility and advanced browser package. New integrations should start
+with `createBrowser()` from `hedgerow/browser`, then bind the returned session
+with `hedgerow/social` or `hedgerow/site`. `createReader()` remains supported
+while existing sites migrate.
+
 Browser-side reader identity for Bluesky comments: atproto OAuth login (via [`@atproto/oauth-client-browser`](https://www.npmjs.com/package/@atproto/oauth-client-browser)) and writing a reply post to the reader's own PDS. This is v1 of "comment in place" — a reader logs into *their own* Bluesky account in your page and posts a real `app.bsky.feed.post` reply, no redirect to bsky.app required.
 
 Framework-agnostic (no React) so [`@hedgerow/react`](../react)'s `Reply.*` parts stay dependency-light — you wire the two together yourself. See [`docs/architecture.md`](../../docs/architecture.md) for the dependency rule.
@@ -52,6 +57,7 @@ function createReader(options?: CreateReaderOptions): Reader;
 
 interface CreateReaderOptions {
   clientId?: string;          // hosted client-metadata.json URL; omit for loopback dev
+  scope?: string;             // defaults to legacy generic for createReader compatibility
   handleResolver?: string;    // resolves handles to DIDs; default the public Bluesky AppView
   plcDirectoryUrl?: string;   // override the PLC directory; local/test networks only
   allowHttp?: boolean;        // allow http:// AS/resource metadata endpoints; local/test networks only
@@ -61,12 +67,12 @@ interface CreateReaderOptions {
 
 interface Reader {
   restore(): Promise<ReaderSession | null>;
-  signIn(handle: string, opts?: { state?: string }): Promise<never>;    // redirects; never resolves on success
-  signUp(service?: string, opts?: { state?: string }): Promise<never>;  // prompt: "create"; default service https://bsky.social
+  signIn(handle: string, opts?: { state?: string; scope?: string }): Promise<never>;
+  signUp(service?: string, opts?: { state?: string; scope?: string }): Promise<never>;
   signOut(): Promise<void>;
   getProfile(): Promise<ReaderProfile | null>;  // did, handle, displayName, avatar — always hits the network
   createReply(input: CreateReplyInput): Promise<StrongRef>;
-  asPublisher(): PublisherLike;  // throws immediately if signed out
+  asPublisher(): PublisherLike;  // deprecated compatibility transport
   like(subject: StrongRef): Promise<StrongRef>;     // app.bsky.feed.like; deduped against findLike first
   unlike(likeUri: string): Promise<void>;
   findLike(subjectUri: string): Promise<string | null>;  // "did I like this?" — see the bound below
@@ -91,9 +97,11 @@ interface PublisherLike {
 }
 ```
 
-### Writing your own records: `asPublisher()`
+### Legacy record transport: `asPublisher()`
 
-A signed-in reader isn't just a commenter — on your own page, the same session can be the site's *author*, editing their own records. `asPublisher()` adapts the current session to the conditional structural shape [`@hedgerow/publish`](../publish)'s document operations use (duck-typed, not imported — this package never depends on `@hedgerow/publish`; see [`docs/architecture.md`](../../docs/architecture.md)'s package-dependency rules):
+`asPublisher()` is retained for compatibility. New code should use
+`author(session, { ownerDid, publicationUri })` from `hedgerow/site`, which
+does not expose arbitrary collection and record-key writes.
 
 ```ts
 const session = await reader.restore();
@@ -130,11 +138,16 @@ Results are cached in memory for the lifetime of the `Reader` instance (cleared 
 
 The OAuth `client_id` tells the authorization server who's asking. `@hedgerow/reader` supports both stories atproto OAuth defines for a public client:
 
-- **Local dev, on a loopback origin (`127.0.0.1` / `[::1]`)** — omit `clientId`. `default-client.ts` builds a spec-correct loopback client id for the current page — `http://localhost?scope=atproto+transition%3Ageneric&redirect_uri=<origin+pathname>` — and loads it via `BrowserOAuthClient.load()`; the authorization server synthesizes matching client metadata for it, so there's nothing to host. This is **not** the same as `@atproto/oauth-client-browser`'s own default (letting `clientMetadata` fall through to its internal `buildLoopbackClientId(window.location)`): that default folds the page's pathname into the client id *itself*, which the provider rejects outside the site root, and it omits `scope` entirely (defaulting to `atproto` only — too narrow for `createReply()`'s writes). Only works on an actual loopback address (not `localhost` — the library redirects `localhost` → `127.0.0.1`), and gets short-lived refresh tokens (~1 day) with no silent sign-in, per the atproto spec.
+- **Local dev, on a loopback origin (`127.0.0.1` / `[::1]`)** — omit `clientId`. `default-client.ts` builds a spec-correct loopback client id for the current page and embeds the configured `scope` alongside `redirect_uri`. The authorization server synthesizes matching client metadata, so there is nothing to host. Only works on an actual loopback address (not `localhost`).
 
 - **A real deployment** — pass `clientId` pointing at a hosted `client-metadata.json` (the URL *is* the client id). `createReader({ clientId: "https://example.com/oauth/client-metadata.json" })` fetches it via `BrowserOAuthClient.load()`. An example document is at [`apps/demo/public/oauth/client-metadata.json`](../../apps/demo/public/oauth/client-metadata.json) — copy it, update `client_id`/`client_uri`/`redirect_uris` to your real domain, and serve it from that exact URL. It only takes effect once it's live on a real domain; the demo repo can't self-host its own client metadata for local testing (that's what the loopback path is for).
 
-Every authorize call (`signIn()`/`signUp()`) explicitly requests `scope: "atproto transition:generic"`, matching what's embedded in both the loopback client id and `client-metadata.json` — requesting more than a client's own registered scope is rejected server-side, so keep the two in sync if you fork the hosted metadata document.
+`createBrowser()` defaults to identity-only (`atproto`). `SOCIAL_SCOPE` grants
+only profile lookup, reply creation, and like create/delete. `createReader()`
+keeps `LEGACY_GENERIC_SCOPE` as its default solely for compatibility; pass
+`SOCIAL_SCOPE` explicitly after updating hosted client metadata. Metadata is
+the maximum grant, while `signIn({ scope })` may request a subset or a later
+expanded grant.
 
 ## Consent
 

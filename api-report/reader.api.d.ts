@@ -8,6 +8,9 @@ interface OAuthSessionLike {
     readonly did: string;
     fetchHandler(pathname: string, init?: RequestInit): Promise<Response>;
     signOut(): Promise<void>;
+    getTokenInfo?(): Promise<{
+        scope: string;
+    }>;
 }
 type OAuthPrompt = "none" | "login" | "consent" | "select_account" | "create";
 interface OAuthClientLike {
@@ -135,9 +138,11 @@ interface Reader {
     restore(): Promise<ReaderSession | null>;
     signIn(handle: string, opts?: {
         state?: string;
+        scope?: string;
     }): Promise<never>;
     signUp(service?: string, opts?: {
         state?: string;
+        scope?: string;
     }): Promise<never>;
     signOut(): Promise<void>;
     getProfile(): Promise<ReaderProfile | null>;
@@ -148,22 +153,61 @@ interface Reader {
     findLike(subjectUri: string): Promise<string | null>;
     takeCallbackState(): string | null;
 }
-interface CreateReaderOptions {
+interface BrowserSession {
+    readonly did: string;
+    readonly handle: string;
+    readonly displayName?: string;
+    readonly scope: string;
+}
+interface CreateBrowserOptions {
     clientId?: string;
+    scope?: string;
     handleResolver?: string;
     plcDirectoryUrl?: string;
     allowHttp?: boolean;
     createClient?(): OAuthClientLike | Promise<OAuthClientLike>;
     createAgent?(session: OAuthSessionLike): AgentLike;
 }
+interface BrowserAuthorizationOptions {
+    state?: string;
+    scope?: string;
+}
+interface BrowserAuth {
+    restore(): Promise<BrowserSession | null>;
+    signIn(handle: string, options?: BrowserAuthorizationOptions): Promise<never>;
+    signUp(service?: string, options?: BrowserAuthorizationOptions): Promise<never>;
+    signOut(): Promise<void>;
+    getProfile(): Promise<ReaderProfile | null>;
+    takeCallbackState(): string | null;
+}
+declare function browserSessionAgent(session: BrowserSession): AgentLike;
+declare function publisherForSession(session: BrowserSession): PublisherLike;
+declare function createBrowser(options?: CreateBrowserOptions): BrowserAuth;
+interface CreateReaderOptions extends CreateBrowserOptions {
+    scope?: string;
+}
 declare function createReader(options?: CreateReaderOptions): Reader;
 declare const DEFAULT_HANDLE_RESOLVER = "https://public.api.bsky.app";
 interface DefaultClientOptions {
     clientId?: string;
+    scope?: string;
     handleResolver?: string;
     plcDirectoryUrl?: string;
     allowHttp?: boolean;
 }
 declare function createDefaultClient(opts: DefaultClientOptions): Promise<OAuthClientLike>;
 declare function createDefaultAgent(session: OAuthSessionLike): AgentLike;
-export { type AgentLike, type CreateReaderOptions, type CreateReplyInput, DEFAULT_HANDLE_RESOLVER, type DefaultClientOptions, type OAuthClientLike, type OAuthPrompt, type OAuthSessionLike, type ProfileView, type PublisherLike, type Reader, type ReaderProfile, type ReaderSession, type StrongRef, createDefaultAgent, createDefaultClient, createReader };
+interface SocialActor {
+    readonly did: string;
+    createReply(input: CreateReplyInput): Promise<StrongRef>;
+    like(subject: StrongRef): Promise<StrongRef>;
+    unlike(likeUri: string): Promise<void>;
+    findLike(subjectUri: string): Promise<string | null>;
+}
+declare function createSocialActor(session: BrowserSession): SocialActor;
+declare const IDENTITY_SCOPE = "atproto";
+declare const BLUESKY_PROFILE_SCOPE = "rpc:app.bsky.actor.getProfile?aud=did:web:api.bsky.app%23bsky_appview";
+declare const SOCIAL_SCOPE: string;
+declare const LEGACY_GENERIC_SCOPE = "atproto transition:generic";
+declare function combineScopes(...scopes: Array<string | undefined>): string;
+export { type AgentLike, BLUESKY_PROFILE_SCOPE, type BrowserAuth, type BrowserAuthorizationOptions, type BrowserSession, type CreateBrowserOptions, type CreateReaderOptions, type CreateReplyInput, DEFAULT_HANDLE_RESOLVER, type DefaultClientOptions, IDENTITY_SCOPE, LEGACY_GENERIC_SCOPE, type OAuthClientLike, type OAuthPrompt, type OAuthSessionLike, type ProfileView, type PublisherLike, type Reader, type ReaderProfile, type ReaderSession, SOCIAL_SCOPE, type SocialActor, type StrongRef, browserSessionAgent, combineScopes, createBrowser, createDefaultAgent, createDefaultClient, createReader, createSocialActor, publisherForSession };

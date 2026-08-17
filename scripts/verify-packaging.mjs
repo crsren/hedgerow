@@ -272,12 +272,13 @@ for (const pkg of packages) {
 
 console.log("Node ESM resolution checks:");
 const resolveRoot = join(workRoot, "resolve-root");
-const resolveNodeModules = join(resolveRoot, "node_modules", "@hedgerow");
-mkdirSync(resolveNodeModules, { recursive: true });
+const resolveNodeModulesRoot = join(resolveRoot, "node_modules");
+mkdirSync(resolveNodeModulesRoot, { recursive: true });
 
 for (const p of packed) {
-  const scopedName = p.name.split("/")[1]; // "@hedgerow/react" -> "react"
-  execFileSync("cp", ["-R", p.dir, join(resolveNodeModules, scopedName)]);
+  const destination = join(resolveNodeModulesRoot, ...p.name.split("/"));
+  mkdirSync(dirname(destination), { recursive: true });
+  execFileSync("cp", ["-R", p.dir, destination]);
 }
 
 // Each package's real (third-party) runtime dependencies, plus @hedgerow/react's
@@ -288,7 +289,6 @@ for (const p of packed) {
 // network-dependent and flaky), symlink in the copies the workspace already
 // resolved for that package under packages/<dir>/node_modules — same
 // dependency, zero network calls.
-const resolveNodeModulesRoot = join(resolveRoot, "node_modules");
 const runtimeDepsToLink = new Set(["react", "react-dom"]); // @hedgerow/react peers
 for (const pkg of packages) {
   for (const dep of Object.keys(pkg.pkgJson.dependencies ?? {})) {
@@ -306,32 +306,38 @@ for (const dep of runtimeDepsToLink) {
 }
 
 for (const p of packed) {
-  try {
-    const out = execFileSync(
-      "node",
-      [
-        "-e",
-        `
-        import(${JSON.stringify(p.name)}).then((mod) => {
-          const keys = Object.keys(mod);
-          if (keys.length === 0) throw new Error("module namespace has no exports");
-          process.stdout.write(keys.join(","));
-          // Some deps (e.g. @atproto/oauth-client-browser) register timers/
-          // listeners at import time that keep the event loop alive forever
-          // in a bare Node process — irrelevant to whether *resolution*
-          // worked, so force the exit once we've observed success.
-          process.exit(0);
-        }).catch((err) => {
-          console.error(err.stack || String(err));
-          process.exit(1);
-        });
-        `,
-      ],
-      { cwd: resolveRoot, encoding: "utf8", timeout: 15_000 },
-    );
-    check(`import("${p.name}") resolves and evaluates`, true, `exports: ${out}`);
-  } catch (err) {
-    check(`import("${p.name}") resolves and evaluates`, false, err.stderr?.toString() || err.message);
+  const publicSpecifiers = Object.keys(p.manifest.exports ?? { ".": null })
+    .filter((subpath) => subpath === "." || subpath.startsWith("./"))
+    .map((subpath) => subpath === "." ? p.name : `${p.name}/${subpath.slice(2)}`);
+
+  for (const specifier of publicSpecifiers) {
+    try {
+      const out = execFileSync(
+        "node",
+        [
+          "-e",
+          `
+          import(${JSON.stringify(specifier)}).then((mod) => {
+            const keys = Object.keys(mod);
+            if (keys.length === 0) throw new Error("module namespace has no exports");
+            process.stdout.write(keys.join(","));
+            // Some deps (e.g. @atproto/oauth-client-browser) register timers/
+            // listeners at import time that keep the event loop alive forever
+            // in a bare Node process — irrelevant to whether *resolution*
+            // worked, so force the exit once we've observed success.
+            process.exit(0);
+          }).catch((err) => {
+            console.error(err.stack || String(err));
+            process.exit(1);
+          });
+          `,
+        ],
+        { cwd: resolveRoot, encoding: "utf8", timeout: 15_000 },
+      );
+      check(`import("${specifier}") resolves and evaluates`, true, `exports: ${out}`);
+    } catch (err) {
+      check(`import("${specifier}") resolves and evaluates`, false, err.stderr?.toString() || err.message);
+    }
   }
 }
 

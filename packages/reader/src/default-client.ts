@@ -6,6 +6,7 @@
 import { Agent } from "@atproto/api";
 import { BrowserOAuthClient } from "@atproto/oauth-client-browser";
 import type { AgentLike, OAuthClientLike, OAuthSessionLike } from "./client-types.js";
+import { LEGACY_GENERIC_SCOPE } from "./scopes.js";
 
 /**
  * Bluesky's public AppView — the default handle resolver, the same host
@@ -14,10 +15,6 @@ import type { AgentLike, OAuthClientLike, OAuthSessionLike } from "./client-type
  * PDS, if you self-host one) to avoid that. See the package README.
  */
 export const DEFAULT_HANDLE_RESOLVER = "https://public.api.bsky.app";
-
-/** identity + generic record writes — createReply() needs the latter. Same
- * value `packages/publish/src/oauth.ts`'s Node CLI login requests. */
-const ATPROTO_SCOPE = "atproto transition:generic";
 
 /**
  * Build a spec-correct loopback client id for the current page.
@@ -37,9 +34,9 @@ const ATPROTO_SCOPE = "atproto transition:generic";
  * writes) and `redirect_uri` set to the current page (origin + pathname, no
  * query/hash) so the OAuth redirect lands back on the same content page.
  */
-function loopbackClientId(): string {
+function loopbackClientId(scope: string): string {
   const redirectUri = `${window.location.origin}${window.location.pathname}`;
-  const params = new URLSearchParams({ scope: ATPROTO_SCOPE, redirect_uri: redirectUri });
+  const params = new URLSearchParams({ scope, redirect_uri: redirectUri });
   return `http://localhost?${params.toString()}`;
 }
 
@@ -50,6 +47,8 @@ export interface DefaultClientOptions {
    * then derives the atproto loopback client id from `window.location`.
    */
   clientId?: string;
+  /** Maximum scope embedded in the loopback client id. Ignored for hosted metadata. */
+  scope?: string;
   handleResolver?: string;
   /**
    * Override the PLC directory base (default `https://plc.directory`) —
@@ -82,7 +81,7 @@ export async function createDefaultClient(opts: DefaultClientOptions): Promise<O
     ...(opts.allowHttp !== undefined ? { allowHttp: opts.allowHttp } : {}),
   };
   return BrowserOAuthClient.load({
-    clientId: opts.clientId ?? loopbackClientId(),
+    clientId: opts.clientId ?? loopbackClientId(opts.scope ?? LEGACY_GENERIC_SCOPE),
     handleResolver,
     ...rest,
   });

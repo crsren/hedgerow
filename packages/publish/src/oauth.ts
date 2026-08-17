@@ -7,7 +7,7 @@
 // lands on a throwaway HTTP server we run on 127.0.0.1 for the duration of the
 // login. See `buildAtprotoLoopbackClientMetadata` in @atproto/oauth-types; an
 // example resolved client id looks like:
-//   http://localhost?scope=atproto+transition%3Ageneric&redirect_uri=http%3A%2F%2F127.0.0.1%3A4139%2Fcallback
+//   http://localhost?scope=atproto+repo%3Asite.standard.document+...&redirect_uri=http%3A%2F%2F127.0.0.1%3A4139%2Fcallback
 //
 // There is deliberately NO headless publish path: minting a record requires a
 // human to complete the browser login once, after which the session is cached
@@ -25,12 +25,11 @@ import {
   type NodeSavedState,
   type OAuthSession,
 } from "@atproto/oauth-client-node";
-import { agentPublisher, type Publisher } from "./auth.js";
+import { agentPublisher, type ConditionalPublisher } from "./auth.js";
+import { SITE_AUTHOR_SCOPE } from "./documents.js";
 import { resolveDid } from "./read.js";
 import { FileStore } from "./store.js";
 
-/** The scope every Hedgerow publish needs: identity + generic record writes. */
-const ATPROTO_SCOPE = "atproto transition:generic";
 /** Loopback redirect port. Fixed so the client id (which encodes it) is stable. */
 const DEFAULT_PORT = 4139;
 /** Where the cached session + transient auth state live. */
@@ -85,11 +84,11 @@ export const loopbackRedirectUri = (port: number): string => `http://127.0.0.1:$
  * Build the atproto loopback (native) client metadata for a port. Pure. The
  * resulting `client_id` is `http://localhost` with the scope and redirect_uri
  * as query params, e.g.
- *   http://localhost?scope=atproto+transition%3Ageneric&redirect_uri=http%3A%2F%2F127.0.0.1%3A4139%2Fcallback
+ *   http://localhost?scope=atproto+repo%3Asite.standard.document+...&redirect_uri=http%3A%2F%2F127.0.0.1%3A4139%2Fcallback
  */
 export function loopbackClientMetadata(port: number) {
   return buildAtprotoLoopbackClientMetadata({
-    scope: ATPROTO_SCOPE,
+    scope: SITE_AUTHOR_SCOPE,
     redirect_uris: [loopbackRedirectUri(port)],
   });
 }
@@ -164,7 +163,7 @@ function loginSession(
       // authorize() does the PAR round-trip and returns the URL to send the user
       // to. Kick it off only once the callback server is actually listening.
       client
-        .authorize(authInput, { scope: ATPROTO_SCOPE })
+        .authorize(authInput, { scope: SITE_AUTHOR_SCOPE })
         .then((authUrl) => openUrl(authUrl.toString()))
         .catch((err) => {
           server.close();
@@ -182,7 +181,9 @@ const page = (title: string, body: string) =>
  * Restores a cached session if one exists; otherwise runs the loopback browser
  * login, persists the session, and reuses it on later runs.
  */
-export async function oauthPublisher(opts: OAuthPublisherOptions = {}): Promise<Publisher> {
+export async function oauthPublisher(
+  opts: OAuthPublisherOptions = {},
+): Promise<ConditionalPublisher> {
   const dir = opts.store ?? DEFAULT_STORE_DIR;
   const port = opts.port ?? DEFAULT_PORT;
   const openUrl = opts.openUrl ?? openInBrowser;

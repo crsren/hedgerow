@@ -1,12 +1,12 @@
 # Package migration
 
-Status: accepted direction; implementation is intentionally staged.
+Status: in progress; protocol correctness and the curated package facade are implemented on staged branches.
 
-Current implementation: the protocol-correctness foundation is in progress.
-The existing packages now carry document/publication CIDs, scope reads to one
-publication, expose conditional writes, centralise Markdown document writes
-and discussion linking, and reject unknown rich-content formats in editing
-paths. Curated `hedgerow/*` entry points have not been introduced yet.
+Current implementation: existing packages carry document/publication CIDs,
+scope reads to one publication, expose conditional writes, centralise Markdown
+document writes/discussion linking, and reject unknown rich-content formats.
+The `hedgerow/browser`, `/site`, `/social`, and `/node` facade now sits over
+those compatibility packages with feature-owned granular scopes.
 
 ## Objective
 
