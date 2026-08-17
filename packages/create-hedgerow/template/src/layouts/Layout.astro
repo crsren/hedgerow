@@ -1,0 +1,61 @@
+---
+import { hedgerowConfig } from "../hedgerow/config";
+
+interface Props {
+  title?: string;
+  publicationUri?: string | null;
+  documentUri?: string | null;
+}
+
+const {
+  title = hedgerowConfig.siteName,
+  publicationUri,
+  documentUri,
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+    {publicationUri && <link rel="site.standard.publication" href={publicationUri} />}
+    {documentUri && <link rel="site.standard.document" href={documentUri} />}
+  </head>
+  <body>
+    <header>
+      <a href="/">{hedgerowConfig.siteName}</a>
+      <a href={hedgerowConfig.editorPath}>Write</a>
+    </header>
+    <main><slot /></main>
+  </body>
+</html>
+
+<style is:global>
+  :root {
+    color: #1d1d1b;
+    background: #fff;
+    font-family: ui-sans-serif, system-ui, sans-serif;
+    font-synthesis: none;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; }
+  body > header {
+    min-height: 4.5rem;
+    padding: 1.25rem clamp(1.25rem, 5vw, 4rem);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    border-bottom: 1px solid #ececea;
+  }
+  a { color: inherit; }
+  body > header a { text-decoration: none; }
+  main { width: min(48rem, calc(100% - 2.5rem)); margin: 0 auto; padding: 4rem 0; }
+  article { font-family: ui-serif, Georgia, serif; font-size: 1.1rem; line-height: 1.7; }
+  article h1 { font-family: ui-sans-serif, system-ui, sans-serif; font-size: clamp(2.5rem, 7vw, 5rem); line-height: .98; }
+  article img { max-width: 100%; }
+  code { font-size: .9em; }
+  @media (max-width: 640px) { main { padding-top: 2.5rem; } }
+</style>

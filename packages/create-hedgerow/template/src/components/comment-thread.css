@@ -1,0 +1,28 @@
+.hedgerow-comments {
+  width: min(100%, 48rem);
+  margin: 5rem auto 0;
+  padding-top: 2rem;
+  border-top: 1px solid #dededb;
+  font: .95rem/1.5 ui-sans-serif, system-ui, sans-serif;
+}
+
+.hedgerow-comments > header,
+.hedgerow-comment-head,
+.hedgerow-comment-foot {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+}
+
+.hedgerow-comments > header { justify-content: space-between; }
+.hedgerow-comments h2 { font-size: 1.25rem; }
+.hedgerow-comments a { color: inherit; text-underline-offset: .18em; }
+.hedgerow-comment-list { margin-top: 1.5rem; }
+.hedgerow-comment { padding: 1rem 0; border-top: 1px solid #ececea; }
+.hedgerow-comment-avatar { width: 1.75rem; height: 1.75rem; border-radius: 50%; }
+.hedgerow-comment-author { font-weight: 650; }
+.hedgerow-comment-time { margin-left: auto; color: #85847f; font-size: .8rem; }
+.hedgerow-comment-body { margin: .75rem 0; white-space: pre-wrap; }
+.hedgerow-comment-foot { color: #777671; font-size: .8rem; }
+.hedgerow-comment-replies { margin-left: 1rem; padding-left: 1rem; border-left: 1px solid #dededb; }
+.hedgerow-comment-fallback { color: #777671; font-style: italic; }

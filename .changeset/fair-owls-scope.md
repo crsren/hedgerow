@@ -10,5 +10,7 @@ persona-neutral identity lifecycle with token-scope reporting; social and
 site features export granular permission requests and bind sessions to
 constrained actions. Site authors are pinned to one owner and publication,
 while the Node sync path now requests only publication, document, profile and
-discussion-post permissions. `Reader.asPublisher()` remains available but is
-deprecated as compatibility plumbing.
+discussion-post permissions. `@hedgerow/publish/site` provides the same
+browser-safe protocol seam without pulling frontmatter parsing into client
+bundles. `Reader.asPublisher()` remains available but is deprecated as
+compatibility plumbing.

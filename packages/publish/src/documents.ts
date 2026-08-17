@@ -8,7 +8,7 @@ import {
 import {
   markdownDocumentRecord,
   type MarkdownDocumentInput,
-} from "./records.js";
+} from "./document-records.js";
 import {
   BSKY_POST_NSID,
   DOCUMENT_NSID,

@@ -3,7 +3,7 @@ import {
   SITE_AUTHOR_SCOPE,
   type SiteAuthor,
   type SiteAuthorOptions,
-} from "@hedgerow/publish";
+} from "@hedgerow/publish/site";
 import {
   publisherForSession,
   type BrowserSession,
@@ -28,7 +28,7 @@ export {
   isMarkdownContent,
   readSite,
   readSiteFromPds,
-} from "@hedgerow/publish";
+} from "@hedgerow/publish/site";
 
 export type {
   DocumentContent,
@@ -48,4 +48,4 @@ export type {
   StartDiscussionResult,
   StrongRef,
   UnknownDocumentContent,
-} from "@hedgerow/publish";
+} from "@hedgerow/publish/site";

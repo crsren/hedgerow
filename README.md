@@ -21,7 +21,8 @@ hedgerow/
 │   ├── comments/        @hedgerow/comments — zero-dep read core: resolve a post, fetch + normalise its comments/likes
 │   ├── react/           @hedgerow/react — headless React components and hooks over the comments core
 │   ├── reader/          @hedgerow/reader — browser OAuth/social compatibility package
-│   └── hedgerow/        hedgerow — curated browser/site/social/node entry points
+│   ├── hedgerow/        hedgerow — curated browser/site/social/node entry points
+│   └── create-hedgerow/ create-hedgerow — tested Astro publication starter
 └── tooling/
     └── tsconfig/        @hedgerow/tsconfig — shared TypeScript configs
 ```
@@ -34,10 +35,11 @@ packages remain the smaller advanced/compatibility surfaces behind it.
 | Package | Runs | Needs auth | Depends on |
 | --- | --- | --- | --- |
 | `hedgerow/browser`, `/site`, `/social`, `/node` | feature-dependent | least-privilege OAuth for writes | the scoped packages below |
+| `create-hedgerow` | Node CLI | author OAuth during bootstrap | Astro starter template |
 | `@hedgerow/comments` | anywhere | no | nothing at all |
 | `@hedgerow/react` | React app | no | `@hedgerow/comments`, React as a peer |
 | `@hedgerow/reader` | browser | visitor's own OAuth | `@atproto/api`, `@atproto/oauth-client-browser` |
-| `@hedgerow/publish` | Node (core is isomorphic) | author's own OAuth | `@atproto/api`, `gray-matter`, Node OAuth client |
+| `@hedgerow/publish` | Node/advanced (`/site` is browser-safe) | author's own OAuth for writes | `@atproto/api`, `gray-matter`, Node OAuth client |
 
 Reading a public thread needs no identity. Replies and likes do: they are real
 Bluesky records written to the visitor's own repository. The curated API keeps
@@ -48,7 +50,18 @@ The seam that keeps that true: **`@hedgerow/react` never imports `@hedgerow/read
 
 ## Quickstart
 
-Requires Node ≥ 20 and pnpm (the pinned version comes from the `packageManager` field — `corepack enable` will honour it).
+Requires Node ≥ 22.12 and pnpm (the pinned version comes from the `packageManager` field — `corepack enable` will honour it).
+
+To start a new publication (the generated Astro 7 app requires Node ≥ 22.12):
+
+```bash
+npm create hedgerow@latest my-site
+```
+
+The starter includes server-rendered PDS article reads, public Bluesky
+comments/likes, a local-first `/sudo` editor, scoped browser OAuth and the
+Standard.site verification endpoints. The visual/editor source is generated
+into the application so it remains yours to customise.
 
 ```bash
 pnpm install

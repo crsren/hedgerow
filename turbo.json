@@ -9,16 +9,16 @@
   "tasks": {
     "build": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "lexicons/**", "tsup.config.ts", "tsconfig.json", "package.json"],
+      "inputs": ["src/**", "template/**", "lexicons/**", "build.mjs", "tsup.config.ts", "tsconfig.json", "package.json"],
       "outputs": ["dist/**"]
     },
     "typecheck": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "test/**", "tsconfig.json", "package.json"]
+      "inputs": ["src/**", "test/**", "template/**", "tsconfig.json", "package.json"]
     },
     "test": {
       "dependsOn": ["^build"],
-      "inputs": ["src/**", "test/**"]
+      "inputs": ["src/**", "test/**", "template/**"]
     },
     "lint": {
       "inputs": ["src/**", "test/**"]

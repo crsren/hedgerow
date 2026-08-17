@@ -4,8 +4,8 @@
 // what consumers can import — read it to decide the version bump.
 // See CONTRIBUTING.md ("Choosing the version bump").
 
-import { SiteAuthorOptions, SiteAuthor } from "@hedgerow/publish";
-export { AmbiguousPublicationError, DocumentContent, DocumentRecord, DocumentSnapshot, MarkdownContent, PublicationRecord, ReadSiteOptions, ReadSiteScope, RecordConflictError, Site, SiteAuthor, SiteAuthorDiscussionInput, SiteAuthorDocumentInput, SiteAuthorOptions, SiteAuthorUpdateInput, SiteDocument, StartDiscussionResult, StrongRef, UnknownDocumentContent, UnsupportedDocumentContentError, documentMarkdown, isMarkdownContent, readSite, readSiteFromPds } from "@hedgerow/publish";
+import { SiteAuthorOptions, SiteAuthor } from "@hedgerow/publish/site";
+export { AmbiguousPublicationError, DocumentContent, DocumentRecord, DocumentSnapshot, MarkdownContent, PublicationRecord, ReadSiteOptions, ReadSiteScope, RecordConflictError, Site, SiteAuthor, SiteAuthorDiscussionInput, SiteAuthorDocumentInput, SiteAuthorOptions, SiteAuthorUpdateInput, SiteDocument, StartDiscussionResult, StrongRef, UnknownDocumentContent, UnsupportedDocumentContentError, documentMarkdown, isMarkdownContent, readSite, readSiteFromPds } from "@hedgerow/publish/site";
 import { BrowserSession } from "@hedgerow/reader";
 declare const permissionScope: string;
 declare function author(session: BrowserSession, options: SiteAuthorOptions): SiteAuthor;
