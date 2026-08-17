@@ -1,0 +1,114 @@
+{
+  "name": "hedgerow",
+  "version": "0.0.1",
+  "description": "A curated AT Protocol toolkit for publishing a site and bringing Bluesky conversations home.",
+  "keywords": [
+    "atproto",
+    "at-protocol",
+    "bluesky",
+    "blog",
+    "comments",
+    "publishing"
+  ],
+  "homepage": "https://github.com/crsren/hedgerow",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crsren/hedgerow.git",
+    "directory": "packages/hedgerow"
+  },
+  "bugs": "https://github.com/crsren/hedgerow/issues",
+  "license": "MIT",
+  "sideEffects": false,
+  "type": "module",
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    },
+    "./browser": {
+      "development": "./src/browser.ts",
+      "types": "./dist/browser.d.ts",
+      "import": "./dist/browser.js",
+      "default": "./dist/browser.js"
+    },
+    "./site": {
+      "development": "./src/site.ts",
+      "types": "./dist/site.d.ts",
+      "import": "./dist/site.js",
+      "default": "./dist/site.js"
+    },
+    "./social": {
+      "development": "./src/social.ts",
+      "types": "./dist/social.d.ts",
+      "import": "./dist/social.js",
+      "default": "./dist/social.js"
+    },
+    "./node": {
+      "development": "./src/node.ts",
+      "types": "./dist/node.d.ts",
+      "import": "./dist/node.js",
+      "default": "./dist/node.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "LICENSE",
+    "CHANGELOG.md",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      },
+      "./browser": {
+        "types": "./dist/browser.d.ts",
+        "import": "./dist/browser.js",
+        "default": "./dist/browser.js"
+      },
+      "./site": {
+        "types": "./dist/site.d.ts",
+        "import": "./dist/site.js",
+        "default": "./dist/site.js"
+      },
+      "./social": {
+        "types": "./dist/social.d.ts",
+        "import": "./dist/social.js",
+        "default": "./dist/social.js"
+      },
+      "./node": {
+        "types": "./dist/node.d.ts",
+        "import": "./dist/node.js",
+        "default": "./dist/node.js"
+      }
+    }
+  },
+  "scripts": {
+    "prepublishOnly": "node ../../scripts/assert-publish-context.mjs && node ../../scripts/assert-dist-tag.mjs",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "dependencies": {
+    "@hedgerow/comments": "workspace:^",
+    "@hedgerow/publish": "workspace:^",
+    "@hedgerow/reader": "workspace:^"
+  },
+  "devDependencies": {
+    "@hedgerow/tsconfig": "workspace:*",
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^4.1.10",
+    "tsup": "^8.3.5",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

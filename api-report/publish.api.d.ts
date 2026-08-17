@@ -130,6 +130,7 @@ declare function isRecordNotFound(err: unknown): boolean;
 declare function isInvalidSwap(err: unknown): boolean;
 declare function supportsConditionalWrites(publisher: Publisher): publisher is ConditionalPublisher;
 declare function agentPublisher(agent: Agent): ConditionalPublisher;
+declare const SITE_AUTHOR_SCOPE: string;
 type DocumentSnapshot = PublisherRecord<DocumentRecord>;
 interface ParsedRecordUri {
     did: string;
@@ -160,6 +161,29 @@ interface StartDiscussionResult {
     post: StrongRef;
 }
 declare function startDiscussion(publisher: ConditionalPublisher, input: StartDiscussionInput): Promise<StartDiscussionResult>;
+interface SiteAuthorOptions {
+    ownerDid: string;
+    publicationUri: string;
+}
+type SiteAuthorDocumentInput = Omit<MarkdownDocumentInput, "site" | "updatedAt" | "bskyPostRef">;
+interface SiteAuthorUpdateInput {
+    snapshot: DocumentSnapshot;
+    document: SiteAuthorDocumentInput;
+}
+interface SiteAuthorDiscussionInput {
+    snapshot: DocumentSnapshot;
+    canonicalUrl: string;
+    text?: string;
+}
+interface SiteAuthor {
+    readonly did: string;
+    readonly publicationUri: string;
+    createDocument(document: SiteAuthorDocumentInput): Promise<DocumentSnapshot>;
+    updateDocument(input: SiteAuthorUpdateInput): Promise<DocumentSnapshot>;
+    deleteDocument(snapshot: DocumentSnapshot): Promise<void>;
+    startDiscussion(input: SiteAuthorDiscussionInput): Promise<StartDiscussionResult>;
+}
+declare function createSiteAuthor(publisher: ConditionalPublisher, options: SiteAuthorOptions): SiteAuthor;
 interface ResolveBskyPostRefOptions {
     pds?: string;
     fetchImpl?: typeof fetch;
@@ -246,4 +270,4 @@ interface ReadSiteOptions extends ResolvePdsOptions, ReadSiteScope {
     pds?: string;
 }
 declare function readSite(identifier: string, fetchImpl?: typeof fetch, opts?: ReadSiteOptions): Promise<Site>;
-export { AmbiguousPublicationError, BSKY_POST_NSID, type BlobRef, type ConditionalPublisher, type CreateDocumentInput, DOCUMENT_NSID, type DeleteDocumentInput, type DeleteRecordOptions, type DocumentContent, type DocumentOptions, type DocumentRecord, type DocumentSnapshot, MARKDOWN_CONTENT_NSID, type MarkdownContent, type MarkdownDocumentInput, PUBLICATION_NSID, type ParsedBskyPostUri, type ParsedPost, type ParsedRecordUri, type PublicationConfig, type PublicationRecord, type PublishOptions, type PublishResult, type PublishState, type Publisher, type PublisherRecord, type PutRecordOptions, type ReadSiteOptions, type ReadSiteScope, RecordConflictError, type RepoRecord, type ResolveBskyPostRefOptions, type ResolveHandleOptions, type ResolvePdsOptions, type ShareOptions, type Site, type SiteDocument, type StartDiscussionInput, type StartDiscussionResult, type StrongRef, type UnknownDocumentContent, type UnshareResult, UnsupportedDocumentContentError, type UpdateDocumentInput, VIA_KEY, VIA_VALUE, agentPublisher, createDocument, deleteDocument, documentMarkdown, documentRecord, emptyState, isInvalidSwap, isMarkdownContent, isRecordNotFound, listRecords, markdownDocumentRecord, normalizeDocumentPath, parseBskyPostUri, parsePost, parseRecordUri, publicationRecord, publishSite, readSite, readSiteFromPds, resolveBskyPostRef, resolveDid, resolvePds, startDiscussion, supportsConditionalWrites, toPlainText, unshare, updateDocument };
+export { AmbiguousPublicationError, BSKY_POST_NSID, type BlobRef, type ConditionalPublisher, type CreateDocumentInput, DOCUMENT_NSID, type DeleteDocumentInput, type DeleteRecordOptions, type DocumentContent, type DocumentOptions, type DocumentRecord, type DocumentSnapshot, MARKDOWN_CONTENT_NSID, type MarkdownContent, type MarkdownDocumentInput, PUBLICATION_NSID, type ParsedBskyPostUri, type ParsedPost, type ParsedRecordUri, type PublicationConfig, type PublicationRecord, type PublishOptions, type PublishResult, type PublishState, type Publisher, type PublisherRecord, type PutRecordOptions, type ReadSiteOptions, type ReadSiteScope, RecordConflictError, type RepoRecord, type ResolveBskyPostRefOptions, type ResolveHandleOptions, type ResolvePdsOptions, SITE_AUTHOR_SCOPE, type ShareOptions, type Site, type SiteAuthor, type SiteAuthorDiscussionInput, type SiteAuthorDocumentInput, type SiteAuthorOptions, type SiteAuthorUpdateInput, type SiteDocument, type StartDiscussionInput, type StartDiscussionResult, type StrongRef, type UnknownDocumentContent, type UnshareResult, UnsupportedDocumentContentError, type UpdateDocumentInput, VIA_KEY, VIA_VALUE, agentPublisher, createDocument, createSiteAuthor, deleteDocument, documentMarkdown, documentRecord, emptyState, isInvalidSwap, isMarkdownContent, isRecordNotFound, listRecords, markdownDocumentRecord, normalizeDocumentPath, parseBskyPostUri, parsePost, parseRecordUri, publicationRecord, publishSite, readSite, readSiteFromPds, resolveBskyPostRef, resolveDid, resolvePds, startDiscussion, supportsConditionalWrites, toPlainText, unshare, updateDocument };

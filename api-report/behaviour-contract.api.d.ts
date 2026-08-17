@@ -98,7 +98,7 @@
 ## Persisted state and identity constants
 
 ### packages/publish/src/oauth.ts — cached session location + the client id's encoded port
-  ATPROTO_SCOPE = "atproto transition:generic"
+  ATPROTO_SCOPE = <REMOVED OR RENAMED>
   DEFAULT_PORT = 4139
   DEFAULT_STORE_DIR = join(homedir(), ".config", "hedgerow")
   STATE_FILE = "oauth-state.json"
@@ -135,7 +135,7 @@
   CONFIRMED_FLASH_MS = 1200
 
 ### packages/reader/src/reader.ts — OAuth scope requested of the visitor, and where signup lands
-  ATPROTO_SCOPE = "atproto transition:generic"
-  DEFAULT_SIGNUP_SERVICE = "https://bsky.social"
-  LIKE_COLLECTION = "app.bsky.feed.like"
+  ATPROTO_SCOPE = <REMOVED OR RENAMED>
+  DEFAULT_SIGNUP_SERVICE = <REMOVED OR RENAMED>
+  LIKE_COLLECTION = <REMOVED OR RENAMED>
 

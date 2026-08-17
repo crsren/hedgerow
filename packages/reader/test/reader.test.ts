@@ -5,6 +5,7 @@
 // login, it's exercised by hand (see the package README), not here.
 import { describe, expect, it, vi } from "vitest";
 import { createReader } from "../src/reader.js";
+import { SOCIAL_SCOPE } from "../src/scopes.js";
 import type {
   AgentLike,
   ListOwnRecordsResult,
@@ -228,6 +229,32 @@ describe("createReader — signIn", () => {
     expect(signIn).toHaveBeenCalledWith("chris.bsky.social", {
       scope: "atproto transition:generic",
       state: "reply-box-42",
+    });
+  });
+
+  it("uses an explicitly configured granular scope", async () => {
+    const { client, signIn } = clientWithoutSession();
+    const reader = createReader({ createClient: () => client, scope: SOCIAL_SCOPE });
+
+    await expect(reader.signIn("chris.bsky.social")).rejects.toThrow(
+      /resolved without redirecting/,
+    );
+    expect(signIn).toHaveBeenCalledWith("chris.bsky.social", {
+      scope: SOCIAL_SCOPE,
+    });
+  });
+
+  it("can request an expanded scope for a progressive authorization flow", async () => {
+    const { client, signIn } = clientWithoutSession();
+    const reader = createReader({ createClient: () => client, scope: SOCIAL_SCOPE });
+    const expanded = `${SOCIAL_SCOPE} repo:site.standard.document`;
+
+    await expect(
+      reader.signIn("chris.bsky.social", { scope: expanded, state: "author" }),
+    ).rejects.toThrow(/resolved without redirecting/);
+    expect(signIn).toHaveBeenCalledWith("chris.bsky.social", {
+      scope: expanded,
+      state: "author",
     });
   });
 });

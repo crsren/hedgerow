@@ -20,25 +20,29 @@ hedgerow/
 │   ├── publish/         @hedgerow/publish — markdown → site.standard.* records on a PDS, and read them back
 │   ├── comments/        @hedgerow/comments — zero-dep read core: resolve a post, fetch + normalise its comments/likes
 │   ├── react/           @hedgerow/react — headless React components and hooks over the comments core
-│   ├── reader/          @hedgerow/reader — browser OAuth identity for a page visitor, so they can reply in place
-│   ├── embed/           @hedgerow/embed — drop-in web component for non-React sites                     (planned)
-│   └── astro/           @hedgerow/astro — Astro integration                                             (planned)
+│   ├── reader/          @hedgerow/reader — browser OAuth/social compatibility package
+│   └── hedgerow/        hedgerow — curated browser/site/social/node entry points
 └── tooling/
     └── tsconfig/        @hedgerow/tsconfig — shared TypeScript configs
 ```
 
 Managed with pnpm workspaces, [Turborepo](https://turbo.build), and [Changesets](https://github.com/changesets/changesets). ESM-only.
 
-The four published packages split along two axes: **who is acting** (the author, a visitor, or nobody) and **what it costs your bundle**.
+Most adopters install `hedgerow` and use its feature subpaths. The scoped
+packages remain the smaller advanced/compatibility surfaces behind it.
 
 | Package | Runs | Needs auth | Depends on |
 | --- | --- | --- | --- |
+| `hedgerow/browser`, `/site`, `/social`, `/node` | feature-dependent | least-privilege OAuth for writes | the scoped packages below |
 | `@hedgerow/comments` | anywhere | no | nothing at all |
 | `@hedgerow/react` | React app | no | `@hedgerow/comments`, React as a peer |
 | `@hedgerow/reader` | browser | visitor's own OAuth | `@atproto/api`, `@atproto/oauth-client-browser` |
 | `@hedgerow/publish` | Node (core is isomorphic) | author's own OAuth | `@atproto/api`, `gray-matter`, Node OAuth client |
 
-Reading a public thread needs no identity, so `@hedgerow/comments` carries no dependencies and `@hedgerow/react` adds only React. Replying does need identity, so it lives in `@hedgerow/reader` — a site that only *displays* comments never pulls in an OAuth client for a login button its visitors may never press.
+Reading a public thread needs no identity. Replies and likes do: they are real
+Bluesky records written to the visitor's own repository. The curated API keeps
+browser identity neutral and lets `hedgerow/social` or `hedgerow/site` bind a
+scoped session to the relevant operations.
 
 The seam that keeps that true: **`@hedgerow/react` never imports `@hedgerow/reader`.** The `Reply.*` parts take `session` and `onSubmit` as plain props, so reader identity is injected rather than baked in, and the render layer works just as well against your own server-backed auth or with no reply composer at all. `Editor.*` follows the same rule for `@hedgerow/publish`. The demo app is what composes them — see [`docs/architecture.md`](./docs/architecture.md) for the full dependency rules.
 
@@ -68,19 +72,14 @@ What genuinely needs the real world, and so lives in manual checklists rather th
 The round-trip tests never touch your account. To publish to your actual repo, authenticate with **atproto OAuth** — there's no password or credential to store. The first publish opens a browser for you to log in; the session is then cached (in `~/.config/hedgerow`) and reused, refreshing itself silently, until you sign out.
 
 ```ts
-import { oauthPublisher, publishSite, parsePost } from "@hedgerow/publish";
+import { parseMarkdown, syncMarkdown } from "hedgerow/node";
 
-// Restores a cached session, or runs the browser login the first time.
-// `identifier` (a handle or DID) is an optional hint — omit it to pick the
-// account in the browser.
-const publisher = await oauthPublisher({ identifier: "you.bsky.social" });
-
-const posts = [parsePost(markdown, "my-first-post")];
-const result = await publishSite(
-  publisher,
-  { url: "https://you.com", name: "you" },
-  posts,
-);
+const result = await syncMarkdown({
+  auth: { identifier: "you.bsky.social" },
+  publication: { url: "https://you.com", name: "you" },
+  posts: [parseMarkdown(markdown, "my-first-post")],
+  state,
+});
 ```
 
 The login uses the atproto **loopback client** flow: a native client id (`http://localhost?...`) with a throwaway callback server on `127.0.0.1`. Nothing to host, no client secret. Sign out (clear the cached session) with `clearSession()` (aliased `logout()`); pass `{ identifier }` to drop just one account.
@@ -93,7 +92,9 @@ The demo wraps all of this: `pnpm --filter @hedgerow/demo run publish:pds` (set 
 
 ## Rendering the social layer
 
-Each read-side package documents its own surface:
+Start with [`hedgerow`](./packages/hedgerow), whose `/browser`, `/site`,
+`/social`, and `/node` subpaths are the supported product model. The scoped
+packages document their lower-level surfaces:
 
 - [`@hedgerow/comments`](./packages/comments) — the framework-agnostic core, if you're rendering the thread yourself or wrapping it for another framework.
 - [`@hedgerow/react`](./packages/react) — the headless `Comments.*`, `Likes.*`, `Reply.*` and `Editor.*` parts, plus guidance on auth-on-demand, optimistic replies, SSR seeding, entry/exit animation, and rendering many threads on one index page.

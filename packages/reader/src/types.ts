@@ -93,7 +93,7 @@ export interface Reader {
    * intent after the redirect" section for the stash-an-id-in-state pattern
    * this exists for (e.g. "which reply box was the reader signing in from").
    */
-  signIn(handle: string, opts?: { state?: string }): Promise<never>;
+  signIn(handle: string, opts?: { state?: string; scope?: string }): Promise<never>;
   /**
    * Start the OAuth **signup** flow (`prompt: "create"`) at `service` (default
    * `https://bsky.social`) and redirect the browser there. The reader creates
@@ -102,7 +102,7 @@ export interface Reader {
    * and log in" round trip. Same redirect/never-resolves contract as
    * {@link Reader.signIn}, including `opts.state`.
    */
-  signUp(service?: string, opts?: { state?: string }): Promise<never>;
+  signUp(service?: string, opts?: { state?: string; scope?: string }): Promise<never>;
   /** Sign out and clear the local session. A no-op when already signed out. */
   signOut(): Promise<void>;
   /**
@@ -124,6 +124,8 @@ export interface Reader {
    * {@link Reader.createReply}, which only throws when actually invoked, this
    * fails at construction time since a Publisher with no identity behind it
    * isn't a meaningful object to hand around.
+   *
+   * @deprecated Use Hedgerow's publication-bound author capability instead.
    */
   asPublisher(): PublisherLike;
   /**

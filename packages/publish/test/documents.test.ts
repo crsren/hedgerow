@@ -5,12 +5,20 @@ import {
   type ConditionalPublisher,
 } from "../src/auth.js";
 import {
+  createSiteAuthor,
   createDocument,
   deleteDocument,
+  SITE_AUTHOR_SCOPE,
   startDiscussion,
   updateDocument,
 } from "../src/documents.js";
-import { BSKY_POST_NSID, DOCUMENT_NSID, VIA_KEY, VIA_VALUE } from "../src/types.js";
+import {
+  BSKY_POST_NSID,
+  DOCUMENT_NSID,
+  PUBLICATION_NSID,
+  VIA_KEY,
+  VIA_VALUE,
+} from "../src/types.js";
 
 const DID = "did:plc:author";
 const PUBLICATION_URI = `at://${DID}/site.standard.publication/3mpublication`;
@@ -162,6 +170,112 @@ describe("startDiscussion", () => {
       BSKY_POST_NSID,
       expect.any(String),
       { swapRecord: "cid-post" },
+    );
+  });
+});
+
+describe("publication-bound author", () => {
+  it("injects publication membership and hides arbitrary record selection", async () => {
+    const repo = publisher();
+    const author = createSiteAuthor(repo, {
+      ownerDid: DID,
+      publicationUri: PUBLICATION_URI,
+    });
+
+    await author.createDocument({
+      path: "/blog/hello",
+      title: "Hello",
+      publishedAt: "2026-08-17T10:00:00.000Z",
+      markdown: "Hello.",
+    });
+
+    expect(repo.putRecord).toHaveBeenCalledWith(
+      DOCUMENT_NSID,
+      expect.any(String),
+      expect.objectContaining({ site: PUBLICATION_URI }),
+      { swapRecord: null },
+    );
+    expect(SITE_AUTHOR_SCOPE).toContain(`repo:${DOCUMENT_NSID}`);
+    expect(SITE_AUTHOR_SCOPE).not.toContain("transition:generic");
+  });
+
+  it("rejects the wrong signed-in account before exposing operations", () => {
+    expect(() =>
+      createSiteAuthor(publisher({ did: "did:plc:wrong" }), {
+        ownerDid: DID,
+        publicationUri: PUBLICATION_URI,
+      }),
+    ).toThrow(/session belongs to did:plc:wrong/);
+  });
+
+  it("cannot update or delete another publication's document", async () => {
+    const repo = publisher();
+    const author = createSiteAuthor(repo, {
+      ownerDid: DID,
+      publicationUri: PUBLICATION_URI,
+    });
+    const snapshot = {
+      uri: `at://${DID}/${DOCUMENT_NSID}/3motherdoc`,
+      cid: "cid-other",
+      value: {
+        $type: DOCUMENT_NSID,
+        site: `at://${DID}/${PUBLICATION_NSID}/3motherpublication`,
+        title: "Other",
+        publishedAt: "2026-08-17T10:00:00.000Z",
+      },
+    } as const;
+
+    await expect(author.deleteDocument(snapshot)).rejects.toThrow(/belongs to/);
+    await expect(
+      author.updateDocument({
+        snapshot,
+        document: {
+          title: "Wrong",
+          publishedAt: snapshot.value.publishedAt,
+          markdown: "Nope.",
+        },
+      }),
+    ).rejects.toThrow(/belongs to/);
+    expect(repo.putRecord).not.toHaveBeenCalled();
+    expect(repo.deleteRecord).not.toHaveBeenCalled();
+  });
+
+  it("preserves an existing discussion link when an article is edited", async () => {
+    const repo = publisher();
+    const author = createSiteAuthor(repo, {
+      ownerDid: DID,
+      publicationUri: PUBLICATION_URI,
+    });
+    const bskyPostRef = {
+      uri: `at://${DID}/${BSKY_POST_NSID}/3mdiscussion`,
+      cid: "cid-discussion",
+    };
+    const snapshot = {
+      uri: `at://${DID}/${DOCUMENT_NSID}/3mdocument`,
+      cid: "cid-before",
+      value: {
+        $type: DOCUMENT_NSID,
+        site: PUBLICATION_URI,
+        title: "Original title",
+        publishedAt: "2026-08-17T10:00:00.000Z",
+        bskyPostRef,
+      },
+    };
+
+    await author.updateDocument({
+      snapshot,
+      document: {
+        title: "Corrected title",
+        publishedAt: snapshot.value.publishedAt,
+        markdown: "Corrected copy.",
+      },
+    });
+
+    expect(repo.putRecord).toHaveBeenCalledWith(
+      DOCUMENT_NSID,
+      "3mdocument",
+      expect.objectContaining({ bskyPostRef }),
+      { swapRecord: "cid-before" },
     );
   });
 });

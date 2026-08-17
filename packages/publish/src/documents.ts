@@ -12,9 +12,23 @@ import {
 import {
   BSKY_POST_NSID,
   DOCUMENT_NSID,
+  PUBLICATION_NSID,
   type DocumentRecord,
   type StrongRef,
 } from "./types.js";
+
+/**
+ * Maximum OAuth permissions for Hedgerow authoring: publication/document
+ * records plus creating and compensating discussion posts. The profile RPC
+ * lets an editor identify the active account without broad Bluesky access.
+ */
+export const SITE_AUTHOR_SCOPE = [
+  "atproto",
+  "rpc:app.bsky.actor.getProfile?aud=did:web:api.bsky.app%23bsky_appview",
+  `repo:${PUBLICATION_NSID}`,
+  `repo:${DOCUMENT_NSID}`,
+  `repo:${BSKY_POST_NSID}?action=create&action=delete`,
+].join(" ");
 
 /** A published document plus the CID required for a safe subsequent update. */
 export type DocumentSnapshot = PublisherRecord<DocumentRecord>;
@@ -218,4 +232,115 @@ export async function startDiscussion(
     }
     throw cause;
   }
+}
+
+/** Configuration that pins an author capability to one owner and publication. */
+export interface SiteAuthorOptions {
+  ownerDid: string;
+  publicationUri: string;
+}
+
+/** Document fields supplied by an editor; publication membership is injected. */
+export type SiteAuthorDocumentInput = Omit<
+  MarkdownDocumentInput,
+  "site" | "updatedAt" | "bskyPostRef"
+>;
+
+export interface SiteAuthorUpdateInput {
+  /** Published baseline, including the CID that guards against lost updates. */
+  snapshot: DocumentSnapshot;
+  document: SiteAuthorDocumentInput;
+}
+
+export interface SiteAuthorDiscussionInput {
+  snapshot: DocumentSnapshot;
+  canonicalUrl: string;
+  text?: string;
+}
+
+/**
+ * Publication-bound authoring. Unlike a raw Publisher, this capability cannot
+ * select an arbitrary repository, collection, record key or publication.
+ */
+export interface SiteAuthor {
+  readonly did: string;
+  readonly publicationUri: string;
+  createDocument(document: SiteAuthorDocumentInput): Promise<DocumentSnapshot>;
+  updateDocument(input: SiteAuthorUpdateInput): Promise<DocumentSnapshot>;
+  deleteDocument(snapshot: DocumentSnapshot): Promise<void>;
+  startDiscussion(input: SiteAuthorDiscussionInput): Promise<StartDiscussionResult>;
+}
+
+function assertPublicationMember(
+  publicationUri: string,
+  snapshot: DocumentSnapshot,
+): void {
+  if (snapshot.value.site !== publicationUri) {
+    throw new Error(
+      `document ${snapshot.uri} belongs to ${snapshot.value.site ?? "no publication"}, not ${publicationUri}`,
+    );
+  }
+}
+
+/** Bind a conditional repository transport to one publication's safe operations. */
+export function createSiteAuthor(
+  publisher: ConditionalPublisher,
+  options: SiteAuthorOptions,
+): SiteAuthor {
+  if (publisher.did !== options.ownerDid) {
+    throw new Error(
+      `author session belongs to ${publisher.did}, expected ${options.ownerDid}`,
+    );
+  }
+  const publication = parseRecordUri(options.publicationUri);
+  if (publication.did !== options.ownerDid) {
+    throw new Error(
+      `publication belongs to ${publication.did}, expected ${options.ownerDid}`,
+    );
+  }
+  if (publication.collection !== PUBLICATION_NSID) {
+    throw new Error(
+      `expected a ${PUBLICATION_NSID} URI, received ${publication.collection}`,
+    );
+  }
+
+  return {
+    did: options.ownerDid,
+    publicationUri: options.publicationUri,
+    async createDocument(document) {
+      return await createDocument(publisher, {
+        ...document,
+        site: options.publicationUri,
+      });
+    },
+    async updateDocument(input) {
+      assertPublicationMember(options.publicationUri, input.snapshot);
+      return await updateDocument(publisher, {
+        uri: input.snapshot.uri,
+        cid: input.snapshot.cid,
+        document: {
+          ...input.document,
+          site: options.publicationUri,
+          ...(input.snapshot.value.bskyPostRef
+            ? { bskyPostRef: input.snapshot.value.bskyPostRef }
+            : {}),
+        },
+      });
+    },
+    async deleteDocument(snapshot) {
+      assertPublicationMember(options.publicationUri, snapshot);
+      await deleteDocument(publisher, {
+        uri: snapshot.uri,
+        cid: snapshot.cid,
+      });
+    },
+    async startDiscussion(input) {
+      assertPublicationMember(options.publicationUri, input.snapshot);
+      return await startDiscussion(publisher, {
+        document: input.snapshot,
+        canonicalUrl: input.canonicalUrl,
+        ...(input.text !== undefined ? { text: input.text } : {}),
+      });
+    },
+  };
 }

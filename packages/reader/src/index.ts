@@ -10,6 +10,29 @@ export type { DefaultClientOptions } from "./default-client.js";
 
 export type { AgentLike, OAuthClientLike, OAuthPrompt, OAuthSessionLike, ProfileView } from "./client-types.js";
 
+export {
+  browserSessionAgent,
+  createBrowser,
+  publisherForSession,
+} from "./browser.js";
+export type {
+  BrowserAuth,
+  BrowserAuthorizationOptions,
+  BrowserSession,
+  CreateBrowserOptions,
+} from "./browser.js";
+
+export { createSocialActor } from "./social.js";
+export type { SocialActor } from "./social.js";
+
+export {
+  BLUESKY_PROFILE_SCOPE,
+  IDENTITY_SCOPE,
+  LEGACY_GENERIC_SCOPE,
+  SOCIAL_SCOPE,
+  combineScopes,
+} from "./scopes.js";
+
 export type {
   CreateReplyInput,
   PublisherLike,

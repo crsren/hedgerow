@@ -4,7 +4,18 @@ Design notes for the Hedgerow monorepo. Kept brief; the source is the source of 
 
 ## Package dependency rules
 
-Three halves of the toolkit — writing records (the author), reading the social layer, and a reader's own identity — stay decoupled.
+Protocol packages stay decoupled; the `hedgerow` facade composes them into the
+four concepts an adopter sees: browser identity, site authoring, social
+conversation and Node synchronisation.
+
+- **OAuth is identity, not a persona.** `createBrowser()` owns only restore,
+  sign-in/up, sign-out, profile and callback state. It defaults to identity-only.
+  `hedgerow/site` and `hedgerow/social` export the granular scope and bind a
+  session to constrained feature operations.
+- **The OAuth grant is the security boundary.** Capability wrappers prevent
+  accidental arbitrary record writes, but only the PDS-enforced permission
+  scope constrains a compromised browser. Hosted client metadata declares the
+  maximum; each flow requests only its needed subset.
 
 - **The read side must never depend on the publish side.** A site that only renders comments and likes should pull in none of `@hedgerow/publish`'s write path (OAuth login, `@atproto/api` agents, markdown parsing). Read and write are separate concerns with separate blast radii.
 - **The comments core is framework-agnostic.** `@hedgerow/comments` does the reading — resolve a post, page its replies and likes off the AppView, shape them into a tree — with no React, no DOM, no framework import.
@@ -12,11 +23,18 @@ Three halves of the toolkit — writing records (the author), reading the social
 - **`@hedgerow/react` must never depend on `@hedgerow/reader`.** The `Reply.*` parts (SLIMS-66) take `session` and `onSubmit` as plain props — reader identity is entirely injected, never imported. This keeps the render layer usable with any atproto OAuth client, a server-backed auth of your own, or no reply composer at all. The **demo app** is what composes the two: `apps/demo/src/components/CommentThread.tsx` imports both `@hedgerow/react` and `@hedgerow/reader` and wires `createReader()`'s session/`createReply` into `Reply.Root`. The `Editor.*` parts (SLIMS-64) follow the exact same rule: `Editor.Root` takes `document`/`onSave` as plain props, so `@hedgerow/react` has no dependency on `@hedgerow/publish`, `@hedgerow/reader`, or any editor library — see below.
 - **`@hedgerow/react` never ships an editor.** `Editor.Body` (SLIMS-64) is a headless SLOT: by default it's a plain `<textarea>` bound to the markdown string, and its `render` prop hands back `{ value, onChange }` for that string (not this library's usual DOM-props-merge `render` contract — a real editor component has nothing to do with spread DOM attributes). The demo mounts Tiptap (`@tiptap/react` + `@tiptap/starter-kit` + `tiptap-markdown`) into that slot as **app-land dependencies only** (`apps/demo/package.json`) — they must never become a dependency of `@hedgerow/react` itself.
 - **`@hedgerow/publish`'s browser-safe core vs. its Node-only auth.** The package splits via subpath exports: the top-level `"."` export (`src/index.ts`) is the isomorphic core — record shapes, `parsePost`/`documentRecord`/`toPlainText`, `publishSite`'s upsert logic, and the unauthenticated read path (`read.ts`/`anchor.ts`) — safe to import from a browser bundle. `oauthPublisher`/`openInBrowser`/`clearSession` (`oauth.ts`, Node-only: `node:http`/`node:child_process`) and `FileStore` (`store.ts`, `node:fs`) live under the `"./node"` subpath (`src/node.ts`, which re-exports the core too) instead. This is what lets `@hedgerow/reader`'s `asPublisher()` (below) build a `Publisher`-shaped object in the browser using `@hedgerow/publish`'s own `DOCUMENT_NSID`/`documentRecord`/`toPlainText` without dragging in `node:http`. A Node consumer (the demo's `apps/demo/scripts/publish.mjs`, any CLI script) imports `@hedgerow/publish/node` to get the full surface through one import; a browser consumer (the demo's `/edit` island) imports the bare `@hedgerow/publish` and never touches Node builtins.
-- **`@hedgerow/reader`'s `asPublisher()` bridges browser identity into the write path (SLIMS-64).** `Reader.asPublisher()` adapts the signed-in OAuth session to the same conditional structural shape as `@hedgerow/publish`'s `ConditionalPublisher`: record-value reads for legacy callers, CID-preserving reads, and put/delete operations with `swapRecord`. It is **duck-typed, not imported**: `@hedgerow/reader` must never depend on `@hedgerow/publish`. The demo passes that transport to `updateDocument()`; it no longer assembles or overwrites `site.standard.document` records itself.
+- **`Reader.asPublisher()` is compatibility plumbing, not product API.** The
+  curated path is `site.author(session, { ownerDid, publicationUri })`, which
+  verifies account/publication ownership, injects membership and exposes only
+  create/update/delete/discussion operations. The raw adapter remains while
+  existing consumers migrate.
 
 ## Auth
 
-Two independent identities write to atproto here: the **author** (publishing posts, `@hedgerow/publish`) and a **reader** (posting a reply from their own account, `@hedgerow/reader`). Both go through atproto OAuth; neither shares code with the other, because they run in different environments (Node CLI vs. browser) against different client types (confidential-ish native app vs. public SPA).
+Two identities commonly write to atproto here: the site author and a visitor.
+The browser OAuth lifecycle is shared and neutral; feature capabilities and
+their permission scopes differ. Node publishing uses the native loopback OAuth
+client because it runs in a different environment.
 
 ### Publishing (the author)
 
@@ -26,9 +44,11 @@ Publishing authenticates through one pluggable seam in `packages/publish/src/aut
 - **CLI login is the loopback (native) flow.** atproto defines a client id of the form `http://localhost?scope=…&redirect_uri=…` for local clients — the authorization server synthesises the client metadata from that id, so there's no hosted client-metadata document and no client secret. We stand up a throwaway HTTP server on `127.0.0.1:<port>`, open the browser to the authorization URL, and catch the redirect there. The session (and transient auth state) persist through a small JSON file store (`store.ts`, default `~/.config/hedgerow`), and tokens refresh silently on restore.
 - **No headless publish path — by design.** A record write always requires a human to complete the browser login once. There is intentionally no username/password or token-env shortcut: after the first login the cached session makes reruns non-interactive, which is the only "unattended" mode we support.
 
-### Reader identity ("comment in place", SLIMS-66)
+### Browser identity and social actions
 
-`@hedgerow/reader` gives a page **visitor** their own atproto OAuth session in the browser, so they can post a real reply without leaving the page. This is purely additive: the read path (`@hedgerow/comments`, `@hedgerow/react`'s `Comments.*`/`Likes.*`) stays zero-auth exactly as before — a site that only wants to *display* comments pulls in none of this.
+`createBrowser()` gives a person an atproto OAuth session in the browser.
+`social.actor(session)` then exposes replies and likes. Public thread and like
+reads remain zero-auth; "anonymous" applies only to reading, never posting.
 
 - **`@atproto/oauth-client-browser` is the client**, not `oauth-client-node` — a browser SPA has no backend to hold a session, so the session (and PKCE/DPoP state) lives in the browser's IndexedDB via that library, per-origin. There is no cross-site single sign-on: logging in on one Hedgerow-powered domain doesn't carry over to another.
 - **Same client-id duality as publishing, browser-shaped.** Local dev on a loopback origin (`127.0.0.1`/`[::1]`) omits `clientId` entirely and the library derives the loopback client id from `window.location`. A real deployment passes `clientId` pointing at a hosted `client-metadata.json` (an example lives at `apps/demo/public/oauth/client-metadata.json`) — the URL itself *is* the client id, fetched via `BrowserOAuthClient.load()`.
@@ -37,9 +57,12 @@ Publishing authenticates through one pluggable seam in `packages/publish/src/aut
 - **Signup is `prompt: "create"`, not an external link.** `signUp(service?)` starts the same OAuth redirect as `signIn()` but with atproto's `prompt: "create"` param and a service URL (default `https://bsky.social`) instead of a handle — the reader creates their account on the authorization server mid-flow and lands back on the page already authorized. No "go create an account on bsky.app, then come back and log in" round trip; the demo keeps a plain bsky.app link only as a tiny secondary fallback.
 - **Consent is always shown, server-side — not something this package controls.** `@atproto/oauth-provider` forces a consent screen for any public client (`token_endpoint_auth_method: "none"`, which is what a browser SPA is) and rejects a silent (`prompt: "none"`) authorization outright; `prompt: "create"` is the one value it exempts from that gate, which is what makes `signUp()`'s no-extra-step landing work. So `signIn()`/`signUp()` never claim to be silent — the only silent path is `restore()` resuming an already-cached per-origin session. Demo copy and docs should say "you'll approve access on your Bluesky server," not imply an instant or cross-visit-silent login.
 
-### Authoring identity ("edit in place", SLIMS-64)
+### Authoring identity
 
-The demo's `/edit` route reuses the SAME `@hedgerow/reader` session — a page's author, signed in with browser OAuth, is a `Reader` exactly like a commenting visitor is. `asPublisher()` supplies an opaque conditional transport to `@hedgerow/publish`'s document operations, so no third auth path is needed. `apps/demo/src/lib/reader.ts` remains the shared browser session module for comments and authoring. `/edit` only renders in live mode (`HEDGEROW_HANDLE` set) — there's no PDS to sign in to or save back to in local-markdown mode.
+An editor requests `site.permissionScope`, restores a browser session and binds
+it with `site.author(session, { ownerDid, publicationUri })`. A dedicated
+author client id/route is recommended so a visitor's social grant never gains
+site-write permissions merely because both features share an origin.
 
 ## Record-shape decisions
 

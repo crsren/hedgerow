@@ -153,11 +153,13 @@ describe("loopbackClientMetadata", () => {
     // scope + redirect_uri as query params; no client secret, native app.
     expect(md.client_id.startsWith("http://localhost?")).toBe(true);
     const params = new URL(md.client_id).searchParams;
-    expect(params.get("scope")).toBe("atproto transition:generic");
+    expect(params.get("scope")).toContain("repo:site.standard.document");
+    expect(params.get("scope")).not.toContain("transition:generic");
     expect(params.get("redirect_uri")).toBe(loopbackRedirectUri(4139));
 
     expect(md.redirect_uris).toEqual(["http://127.0.0.1:4139/callback"]);
-    expect(md.scope).toBe("atproto transition:generic");
+    expect(md.scope).toContain("repo:site.standard.document");
+    expect(md.scope).not.toContain("transition:generic");
     expect(md.token_endpoint_auth_method).toBe("none");
     expect(md.application_type).toBe("native");
     expect(md.response_types).toEqual(["code"]);

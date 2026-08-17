@@ -94,9 +94,25 @@ for (const dir of readdirSync(packagesDir, { withFileTypes: true }).sort((a, b) 
 
   // One report per declaration entry point, so a package with subpath exports
   // (e.g. @hedgerow/publish's "./node") gets each surface reported separately.
-  const dtsFiles = readdirSync(distDir)
-    .filter((f) => f.endsWith(".d.ts"))
-    .sort();
+  // Multi-entry tsup builds may emit hashed declaration chunks alongside the
+  // actual public entry points. Report only files named by the package's
+  // published `types` export; otherwise an internal chunk name becomes a fake
+  // public API report and changes nondeterministically as bundling shifts.
+  const declaredTypes = new Set();
+  const collectTypes = (value) => {
+    if (typeof value === "string") return;
+    if (value == null || typeof value !== "object") return;
+    if (typeof value.types === "string") {
+      declaredTypes.add(value.types.replace(/^\.\/dist\//, ""));
+    }
+    for (const child of Object.values(value)) collectTypes(child);
+  };
+  collectTypes(pkgJson.publishConfig?.exports ?? pkgJson.exports);
+
+  const dtsFiles = (declaredTypes.size > 0
+    ? [...declaredTypes]
+    : readdirSync(distDir).filter((f) => f.endsWith(".d.ts"))
+  ).sort();
 
   if (dtsFiles.length === 0) {
     console.error(`No .d.ts emitted for ${pkgJson.name} — is \`dts\` enabled in its tsup config?`);

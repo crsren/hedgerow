@@ -12,6 +12,7 @@ export interface OAuthSessionLike {
   readonly did: string;
   fetchHandler(pathname: string, init?: RequestInit): Promise<Response>;
   signOut(): Promise<void>;
+  getTokenInfo?(): Promise<{ scope: string }>;
 }
 
 /**
