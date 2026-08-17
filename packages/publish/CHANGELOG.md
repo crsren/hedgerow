@@ -1,5 +1,29 @@
 # @hedgerow/publish
 
+## 0.3.0
+
+### Minor Changes
+
+- [#34](https://github.com/crsren/hedgerow/pull/34) [`247cbf3`](https://github.com/crsren/hedgerow/commit/247cbf39c64af3b0d7fe3007a678022735b50608) Thanks [@crsren](https://github.com/crsren)! - Add conflict-safe document authoring and publication-scoped reads. Document
+  and publication reads now retain record CIDs; browser and Node publisher
+  adapters support `swapRecord`; and new `createDocument`, `updateDocument`,
+  `deleteDocument`, and `startDiscussion` operations own TID generation, record
+  construction, and rollback. `readSite` now requires an explicit publication
+  scope when a repository contains multiple publications, and rich content is
+  typed as an open union: use `isMarkdownContent` or `documentMarkdown` before
+  editing instead of accessing `content.markdown` directly.
+
+- [#35](https://github.com/crsren/hedgerow/pull/35) [`643e722`](https://github.com/crsren/hedgerow/commit/643e7222a8dee243382bd3281557eb10d086648f) Thanks [@crsren](https://github.com/crsren)! - Introduce the curated `hedgerow/browser`, `hedgerow/site`,
+  `hedgerow/social`, and `hedgerow/node` entry points. Browser OAuth is now a
+  persona-neutral identity lifecycle with token-scope reporting; social and
+  site features export granular permission requests and bind sessions to
+  constrained actions. Site authors are pinned to one owner and publication,
+  while the Node sync path now requests only publication, document, profile and
+  discussion-post permissions. `@hedgerow/publish/site` provides the same
+  browser-safe protocol seam without pulling frontmatter parsing into client
+  bundles. `Reader.asPublisher()` remains available but is deprecated as
+  compatibility plumbing.
+
 ## 0.2.0
 
 ### Minor Changes

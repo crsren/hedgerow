@@ -1,6 +1,6 @@
 {
   "name": "create-hedgerow",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "description": "Create a local-first Astro publication backed by AT Protocol.",
   "keywords": [
     "atproto",
