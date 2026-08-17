@@ -1,0 +1,72 @@
+{
+  "name": "create-hedgerow",
+  "version": "0.0.1",
+  "description": "Create a local-first Astro publication backed by AT Protocol.",
+  "keywords": [
+    "atproto",
+    "at-protocol",
+    "astro",
+    "blog",
+    "bluesky",
+    "scaffold"
+  ],
+  "homepage": "https://github.com/crsren/hedgerow",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/crsren/hedgerow.git",
+    "directory": "packages/create-hedgerow"
+  },
+  "bugs": "https://github.com/crsren/hedgerow/issues",
+  "license": "MIT",
+  "sideEffects": false,
+  "type": "module",
+  "bin": {
+    "create-hedgerow": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "development": "./src/index.ts",
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist",
+    "template",
+    "LICENSE",
+    "CHANGELOG.md",
+    "README.md"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "provenance": true,
+    "exports": {
+      ".": {
+        "types": "./dist/index.d.ts",
+        "import": "./dist/index.js",
+        "default": "./dist/index.js"
+      }
+    }
+  },
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "prepublishOnly": "node ../../scripts/assert-publish-context.mjs && node ../../scripts/assert-dist-tag.mjs",
+    "build": "tsup",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@hedgerow/tsconfig": "workspace:*",
+    "@types/node": "^22.10.2",
+    "@vitest/coverage-v8": "^4.1.10",
+    "tsup": "^8.3.5",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.10"
+  }
+}

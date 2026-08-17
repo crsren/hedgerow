@@ -222,6 +222,51 @@ for (const pkg of packages) {
     existsSync(join(extractTo, "dist", "index.js")),
   );
 
+  for (const [command, target] of Object.entries(manifest.bin ?? {})) {
+    const entry = join(extractTo, target);
+    check(`bin ${command} points at a packed file`, existsSync(entry), target);
+    check(
+      `bin ${command} starts with a Node shebang`,
+      existsSync(entry) && readFileSync(entry, "utf8").startsWith("#!/usr/bin/env node"),
+      target,
+    );
+  }
+
+  if (pkg.name === "create-hedgerow") {
+    check(
+      "starter source ships in the tarball",
+      filePaths.includes("template/src/pages/sudo.astro") &&
+        filePaths.includes("template/hedgerow.config.mjs"),
+    );
+    check(
+      "generated starter build artifacts do not ship",
+      !filePaths.some((p) => p.startsWith("template/dist/") || p.startsWith("template/.astro/")),
+      filePaths.filter((p) => p.startsWith("template/dist/") || p.startsWith("template/.astro/")).join(", "),
+    );
+    const generated = join(workRoot, "generated-starter");
+    try {
+      execFileSync("node", [
+        join(extractTo, manifest.bin["create-hedgerow"]),
+        generated,
+        "--author", "did:plc:packaging",
+        "--url", "https://packaging.example",
+        "--name", "Packaging test",
+        "--no-install",
+      ], { encoding: "utf8" });
+      const generatedManifest = JSON.parse(readFileSync(join(generated, "package.json"), "utf8"));
+      const generatedConfig = readFileSync(join(generated, "hedgerow.config.mjs"), "utf8");
+      check(
+        "packed CLI generates configured application source",
+        generatedManifest.dependencies.hedgerow === "^0.1.0" &&
+          generatedManifest.dependencies["@hedgerow/react"] === "^0.3.0" &&
+          generatedConfig.includes("did:plc:packaging") &&
+          existsSync(join(generated, "src", "pages", "sudo.astro")),
+      );
+    } catch (error) {
+      check("packed CLI generates configured application source", false, error.message);
+    }
+  }
+
   // A published tarball is public the instant it lands — mirrors and scrapers
   // have it within minutes, and unpublishing does not un-leak it. The `files`
   // allowlist makes a stray credential unlikely, but "unlikely" and

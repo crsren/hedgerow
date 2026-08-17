@@ -59,25 +59,6 @@ interface DocumentRecord {
     bskyPostRef?: StrongRef;
     [VIA_KEY]?: typeof VIA_VALUE;
 }
-interface PublicationConfig {
-    url: string;
-    name: string;
-    description?: string;
-}
-interface ParsedPost {
-    slug: string;
-    path?: string;
-    title: string;
-    publishedAt: string;
-    description?: string;
-    tags?: string[];
-    draft?: boolean;
-    share?: boolean;
-    body: string;
-    bskyPostRef?: StrongRef;
-    bskyPostUri?: string;
-}
-declare function parsePost(markdown: string, fallbackSlug: string): ParsedPost;
 declare function publicationRecord(config: PublicationConfig): PublicationRecord;
 declare function toPlainText(markdown: string): string;
 declare function normalizeDocumentPath(path: string): string;
@@ -98,6 +79,25 @@ interface DocumentOptions {
     updatedAt?: string;
 }
 declare function documentRecord(post: ParsedPost, opts: DocumentOptions): DocumentRecord;
+interface PublicationConfig {
+    url: string;
+    name: string;
+    description?: string;
+}
+interface ParsedPost {
+    slug: string;
+    path?: string;
+    title: string;
+    publishedAt: string;
+    description?: string;
+    tags?: string[];
+    draft?: boolean;
+    share?: boolean;
+    body: string;
+    bskyPostRef?: StrongRef;
+    bskyPostUri?: string;
+}
+declare function parsePost(markdown: string, fallbackSlug: string): ParsedPost;
 interface PublisherRecord<T = Record<string, unknown>> {
     uri: string;
     cid: string;

@@ -1,0 +1,42 @@
+---
+import MarkdownIt from "markdown-it";
+import { documentMarkdown } from "hedgerow/site";
+import CommentThread from "../../components/CommentThread";
+import Layout from "../../layouts/Layout.astro";
+import { loadSite } from "../../hedgerow/site";
+
+const requestedPath = `/blog/${Astro.params.path ?? ""}`.replace(/\/$/, "");
+const site = await loadSite();
+const document = site.documents.find(
+  (candidate) => candidate.value.path?.replace(/\/$/, "") === requestedPath,
+);
+
+if (!document) return Astro.rewrite("/404");
+
+const markdown = documentMarkdown(document.value) ?? document.value.textContent ?? "";
+const renderer = new MarkdownIt({ html: false, linkify: true, typographer: true });
+const html = renderer.render(markdown);
+Astro.response.headers.set("Cache-Control", "public, max-age=0, s-maxage=30, stale-while-revalidate=300");
+---
+
+<Layout
+  title={`${document.value.title} · ${site.publication?.name ?? ""}`}
+  publicationUri={site.publicationUri}
+  documentUri={document.uri}
+>
+  <article>
+    <h1>{document.value.title}</h1>
+    <time datetime={document.value.publishedAt}>
+      {new Date(document.value.publishedAt).toLocaleDateString("en", { dateStyle: "long" })}
+    </time>
+    <div class="body" set:html={html} />
+  </article>
+  {document.value.bskyPostRef && (
+    <CommentThread client:visible post={document.value.bskyPostRef.uri} />
+  )}
+</Layout>
+
+<style>
+  time { color: #777; }
+  .body { margin-top: 3rem; }
+</style>

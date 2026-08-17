@@ -22,19 +22,22 @@ npm install @hedgerow/publish
 
 Node ≥ 20. ESM-only.
 
-## Two entry points
+## Entry points
 
 This package splits deliberately, because half of it must be safe to bundle for
 a browser:
 
 | Import | Contains | Safe in a browser |
 | --- | --- | --- |
-| `@hedgerow/publish` | Record shapes, `parsePost`, `documentRecord`, `toPlainText`, `publishSite`'s upsert logic, and the unauthenticated read path | **Yes** |
-| `@hedgerow/publish/node` | The above, plus `oauthPublisher`, `openInBrowser`, `clearSession`, and `FileStore` | No — uses `node:http`, `node:fs` |
+| `@hedgerow/publish/site` | Record shapes/builders, CID-safe document operations, and unauthenticated publication reads | **Yes** |
+| `@hedgerow/publish` | Legacy compatibility surface, including frontmatter parsing and filesystem reconciliation | Do not use for new browser bundles |
+| `@hedgerow/publish/node` | The compatibility surface plus `oauthPublisher`, `openInBrowser`, `clearSession`, and `FileStore` | No — uses `node:http`, `node:fs` |
 
-A Node script or CLI should import `@hedgerow/publish/node` to get everything
-through one import. A browser bundle must import the bare `@hedgerow/publish`,
-which never touches a Node builtin.
+A Node script or CLI should import `@hedgerow/publish/node`. A browser
+integration should normally use `hedgerow/site`; lower-level browser code can
+use `@hedgerow/publish/site`. The bare entry point stays intact for existing
+consumers, but its historical frontmatter parser is intentionally not part of
+the browser-focused subpath.
 
 ## Publishing
 

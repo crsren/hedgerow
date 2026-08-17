@@ -31,6 +31,12 @@
       "types": "./dist/node.d.ts",
       "import": "./dist/node.js",
       "default": "./dist/node.js"
+    },
+    "./site": {
+      "development": "./src/site.ts",
+      "types": "./dist/site.d.ts",
+      "import": "./dist/site.js",
+      "default": "./dist/site.js"
     }
   },
   "main": "./dist/index.js",
@@ -55,12 +61,17 @@
         "types": "./dist/node.d.ts",
         "import": "./dist/node.js",
         "default": "./dist/node.js"
+      },
+      "./site": {
+        "types": "./dist/site.d.ts",
+        "import": "./dist/site.js",
+        "default": "./dist/site.js"
       }
     }
   },
   "scripts": {
     "prepublishOnly": "node ../../scripts/assert-publish-context.mjs && node ../../scripts/assert-dist-tag.mjs",
-    "build": "tsup",
+    "build": "node build.mjs",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "coverage": "vitest run --coverage"

@@ -1,0 +1,10 @@
+---
+import AuthorEditor from "../components/AuthorEditor";
+import Layout from "../layouts/Layout.astro";
+
+export const prerender = false;
+---
+
+<Layout title="Editor">
+  <AuthorEditor client:only="react" />
+</Layout>

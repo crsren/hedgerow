@@ -82,12 +82,12 @@ only the collections/actions they need.
    - reject unknown rich-content members unless conversion is explicit.
 2. Add constrained site/social capability factories and granular OAuth scope
    support. Deprecate, but do not yet remove, `Reader.asPublisher()`.
-3. Move the portfolio off direct `putRecord` calls and hand-built records.
-4. Add the curated `hedgerow/*` entry points. Keep old scoped packages as
+3. Add the curated `hedgerow/*` entry points. Keep old scoped packages as
    forwarding compatibility packages for at least one minor release.
-5. Ship `create-hedgerow` as a tested Astro starter. Generated UX source
+4. Ship `create-hedgerow` as a tested Astro starter. Generated UX source
    belongs to the adopter and carries a generator-version marker; no automatic
    merge/update promise is made.
+5. Move the portfolio off direct `putRecord` calls and hand-built records.
 6. Deprecate `@hedgerow/react`'s underspecified `Editor.*` only after the
    starter and portfolio no longer consume it.
 

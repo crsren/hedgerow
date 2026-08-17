@@ -1,0 +1,40 @@
+---
+import Layout from "../layouts/Layout.astro";
+import { loadSite } from "../hedgerow/site";
+
+const site = await loadSite();
+Astro.response.headers.set("Cache-Control", "public, max-age=0, s-maxage=30, stale-while-revalidate=300");
+---
+
+<Layout publicationUri={site.publicationUri}>
+  {site.publication ? (
+    <>
+      <h1>{site.publication.name}</h1>
+      {site.publication.description && <p>{site.publication.description}</p>}
+      <ol class="articles">
+        {site.documents.map((document) => (
+          <li>
+            <a href={document.value.path ?? `/blog/${document.uri?.split("/").at(-1)}`}>
+              <strong>{document.value.title}</strong>
+              <time datetime={document.value.publishedAt}>
+                {new Date(document.value.publishedAt).toLocaleDateString("en", { dateStyle: "long" })}
+              </time>
+            </a>
+          </li>
+        ))}
+      </ol>
+    </>
+  ) : (
+    <section>
+      <h1>Finish setup</h1>
+      <p>Run <code>pnpm hedgerow:bootstrap</code>, commit <code>.hedgerow/state.json</code>, then open <a href="/sudo">/sudo</a>.</p>
+    </section>
+  )}
+</Layout>
+
+<style>
+  h1 { font-size: clamp(2.5rem, 8vw, 5.5rem); line-height: .95; }
+  .articles { margin: 3rem 0 0; padding: 0; list-style: none; border-top: 1px solid #ddd; }
+  .articles a { display: flex; justify-content: space-between; gap: 2rem; padding: 1.5rem 0; text-decoration: none; border-bottom: 1px solid #ddd; }
+  .articles time { color: #777; white-space: nowrap; }
+</style>
