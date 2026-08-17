@@ -38,4 +38,4 @@ export type {
   ThreadResult,
 } from "@hedgerow/comments";
 
-export type { CreateReplyInput, SocialActor } from "@hedgerow/reader";
+export type { CreateReplyInput, SocialActor, StrongRef } from "@hedgerow/reader";

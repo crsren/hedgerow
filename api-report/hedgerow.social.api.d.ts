@@ -5,7 +5,7 @@
 // See CONTRIBUTING.md ("Choosing the version bump").
 
 import { BrowserSession, SocialActor } from "@hedgerow/reader";
-export { CreateReplyInput, SocialActor } from "@hedgerow/reader";
+export { CreateReplyInput, SocialActor, StrongRef } from "@hedgerow/reader";
 export { Actor, BlockedNode, Comment, CommentNode, FetchLikesOpts, FetchThreadOpts, HedgerowFetchError, Like, LikesResult, NotFoundNode, PostStats, ResolveOpts, SortOrder, ThreadResult, atUriToBskyUrl, fetchLikes, fetchThread, resolvePostUri, sortReplies } from "@hedgerow/comments";
 declare const permissionScope: string;
 declare function actor(session: BrowserSession): SocialActor;
