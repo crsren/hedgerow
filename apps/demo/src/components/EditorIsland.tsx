@@ -5,17 +5,16 @@
 // @hedgerow/publish's browser-safe isomorphic core — no session needed for
 // reads) and edit one with @hedgerow/react's Editor.* parts, Tiptap mounted
 // into Editor.Body's headless slot. Saving builds the updated
-// site.standard.document record and writes it via reader.asPublisher() —
-// the same Publisher contract @hedgerow/publish's publishSite writes
-// through, just reached from the reader's own OAuth session instead of the
-// CLI's oauthPublisher().
+// site.standard.document record through @hedgerow/publish's updateDocument(),
+// using the loaded CID to reject stale edits. reader.asPublisher() supplies
+// the browser OAuth transport; the document API owns record construction and
+// compare-and-swap semantics.
 import { useCallback, useEffect, useState } from "react";
 import { Editor, type EditorFields } from "@hedgerow/react";
 import {
-  DOCUMENT_NSID,
-  MARKDOWN_CONTENT_NSID,
+  documentMarkdown,
   readSite,
-  toPlainText,
+  updateDocument,
   type DocumentRecord,
 } from "@hedgerow/publish";
 import type { ReaderSession } from "@hedgerow/reader";
@@ -30,6 +29,8 @@ import "./edit.css";
 interface LoadedDoc {
   /** at:// uri — the rkey to write back to is derived from this. */
   uri: string;
+  /** CID observed with the record; later used for conflict-safe updates. */
+  cid: string;
   value: DocumentRecord;
 }
 
@@ -113,7 +114,7 @@ export default function EditorIsland() {
     if (!doc) return;
     setDocumentFields({
       title: doc.value.title,
-      markdown: doc.value.content?.markdown ?? doc.value.textContent ?? "",
+      markdown: documentMarkdown(doc.value) ?? doc.value.textContent ?? "",
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedUri]);
@@ -135,22 +136,35 @@ export default function EditorIsland() {
 
   async function handleSave(fields: { title: string; markdown: string }) {
     if (!selected) throw new Error("No document selected.");
-    const rkey = selected.uri.split("/").pop();
-    if (!rkey) throw new Error(`Malformed record uri: ${selected.uri}`);
-
-    const updated: DocumentRecord = {
-      ...selected.value,
-      title: fields.title,
-      content: { $type: MARKDOWN_CONTENT_NSID, markdown: fields.markdown },
-      textContent: toPlainText(fields.markdown),
-      updatedAt: new Date().toISOString(),
-    };
-
-    await reader.asPublisher().putRecord(DOCUMENT_NSID, rkey, updated as unknown as Record<string, unknown>);
+    const updated = await updateDocument(reader.asPublisher(), {
+      uri: selected.uri,
+      cid: selected.cid,
+      document: {
+        site: selected.value.site,
+        publishedAt: selected.value.publishedAt,
+        ...(selected.value.path ? { path: selected.value.path } : {}),
+        ...(selected.value.description
+          ? { description: selected.value.description }
+          : {}),
+        ...(selected.value.tags ? { tags: selected.value.tags } : {}),
+        ...(selected.value.bskyPostRef
+          ? { bskyPostRef: selected.value.bskyPostRef }
+          : {}),
+        markdown: fields.markdown,
+        title: fields.title,
+      },
+    });
 
     // Reflect the save locally so re-selecting the same post (or the list
     // view) shows the fresh title/content without a full reload.
-    setDocs((prev) => prev?.map((d) => (d.uri === selected.uri ? { ...d, value: updated } : d)) ?? prev);
+    setDocs(
+      (prev) =>
+        prev?.map((d) =>
+          d.uri === selected.uri
+            ? { ...d, cid: updated.cid, value: updated.value }
+            : d,
+        ) ?? prev,
+    );
   }
 
   if (session === undefined) {

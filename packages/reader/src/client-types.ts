@@ -97,13 +97,21 @@ export interface AgentLike {
           collection: string;
           rkey: string;
           record: Record<string, unknown>;
+          swapRecord?: string | null;
         }): Promise<{ data: { uri: string; cid: string } }>;
         getRecord(params: {
           repo: string;
           collection: string;
           rkey: string;
-        }): Promise<{ data: { value: Record<string, unknown> } }>;
-        deleteRecord(params: { repo: string; collection: string; rkey: string }): Promise<unknown>;
+        }): Promise<{
+          data: { uri: string; cid?: string; value: Record<string, unknown> };
+        }>;
+        deleteRecord(params: {
+          repo: string;
+          collection: string;
+          rkey: string;
+          swapRecord?: string;
+        }): Promise<unknown>;
       };
     };
   };

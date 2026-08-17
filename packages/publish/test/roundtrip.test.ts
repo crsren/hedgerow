@@ -5,11 +5,12 @@ import { AtpAgent } from "@atproto/api";
 import { TID } from "@atproto/common-web";
 import { TestNetworkNoAppView } from "@atproto/dev-env";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { agentPublisher } from "../src/auth.js";
+import { RecordConflictError, agentPublisher } from "../src/auth.js";
+import { createDocument, updateDocument } from "../src/documents.js";
 import { emptyState, publishSite, unshare, type PublishState } from "../src/publish.js";
 import { parsePost } from "../src/records.js";
 import { listRecords, readSiteFromPds } from "../src/read.js";
-import { VIA_KEY, VIA_VALUE } from "../src/types.js";
+import { BSKY_POST_NSID, VIA_KEY, VIA_VALUE } from "../src/types.js";
 
 const POST = `---
 title: "Back to Web One"
@@ -56,7 +57,9 @@ describe("publish -> read round trip (local PDS)", () => {
     expect(result.publicationUri).toContain("site.standard.publication");
     expect(result.documents).toHaveLength(1);
 
-    const site = await readSiteFromPds(pdsUrl, did);
+    const site = await readSiteFromPds(pdsUrl, did, fetch, {
+      publicationUri: result.publicationUri,
+    });
 
     expect(site.publication?.name).toBe("crsren");
     expect(site.publication?.url).toBe("https://crsren.com");
@@ -81,7 +84,11 @@ describe("publish -> read round trip (local PDS)", () => {
     const posts = [parsePost(POST, "back-to-web-one")];
 
     const first = await publishSite(publisher, { url: "https://crsren.com", name: "crsren" }, posts);
-    const countAfterFirst = (await readSiteFromPds(pdsUrl, did)).documents.length;
+    const countAfterFirst = (
+      await readSiteFromPds(pdsUrl, did, fetch, {
+        publicationUri: first.publicationUri,
+      })
+    ).documents.length;
 
     const second = await publishSite(
       publisher,
@@ -94,7 +101,9 @@ describe("publish -> read round trip (local PDS)", () => {
     expect(second.publicationUri).toBe(first.publicationUri);
     expect(second.documents[0]!.uri).toBe(first.documents[0]!.uri);
     expect(second.documents[0]!.changed).toBe(false);
-    const after = await readSiteFromPds(pdsUrl, did);
+    const after = await readSiteFromPds(pdsUrl, did, fetch, {
+      publicationUri: first.publicationUri,
+    });
     expect(after.documents).toHaveLength(countAfterFirst);
     // unchanged republish must not stamp updatedAt
     const doc = after.documents.find((d) => d.value.path === "/back-to-web-one");
@@ -117,10 +126,50 @@ describe("publish -> read round trip (local PDS)", () => {
     );
 
     expect(second.documents[0]!.changed).toBe(true);
-    const site = await readSiteFromPds(pdsUrl, did);
+    const site = await readSiteFromPds(pdsUrl, did, fetch, {
+      publicationUri: first.publicationUri,
+    });
     const doc = site.documents.find((d) => d.value.path === "/changing-post");
     expect(doc?.value.textContent).toBe("Edited body.");
     expect(doc?.value.updatedAt).toBeDefined();
+  });
+});
+
+describe("document compare-and-swap (local PDS)", () => {
+  it("rejects a stale edit and preserves the newer record", async () => {
+    const publisher = agentPublisher(agent);
+    const created = await createDocument(publisher, {
+      site: "https://crsren.com",
+      path: "/cas-document",
+      title: "Original",
+      publishedAt: "2026-08-17T10:00:00.000Z",
+      markdown: "Original body.",
+    });
+    const rkey = created.uri.split("/").pop()!;
+    const newer = await publisher.putRecord(
+      "site.standard.document",
+      rkey,
+      { ...created.value, title: "Changed elsewhere" },
+      { swapRecord: created.cid },
+    );
+
+    await expect(
+      updateDocument(publisher, {
+        uri: created.uri,
+        cid: created.cid,
+        document: {
+          site: created.value.site,
+          path: created.value.path,
+          title: "Stale local edit",
+          publishedAt: created.value.publishedAt,
+          markdown: "Stale body.",
+        },
+      }),
+    ).rejects.toBeInstanceOf(RecordConflictError);
+
+    const stored = await publisher.getRecordWithCid("site.standard.document", rkey);
+    expect(stored?.cid).toBe(newer.cid);
+    expect(stored?.value.title).toBe("Changed elsewhere");
   });
 });
 
@@ -160,7 +209,9 @@ Comments live on Bluesky.
     );
     expect(result.warnings).toEqual([]);
 
-    const site = await readSiteFromPds(pdsUrl, did);
+    const site = await readSiteFromPds(pdsUrl, did, fetch, {
+      publicationUri: result.publicationUri,
+    });
     const readDoc = site.documents.find((d) => d.value.path === "/anchored-post");
     expect(readDoc?.value.bskyPostRef).toEqual({ uri: postUri, cid: created.data.cid });
   });
@@ -190,7 +241,9 @@ This post's anchor is missing.
     // published, but with a warning and no ref
     expect(result.warnings).toHaveLength(1);
     expect(result.warnings[0]).toContain("dangling-anchor");
-    const site = await readSiteFromPds(pdsUrl, did);
+    const site = await readSiteFromPds(pdsUrl, did, fetch, {
+      publicationUri: result.publicationUri,
+    });
     const readDoc = site.documents.find((d) => d.value.path === "/dangling-anchor");
     expect(readDoc).toBeDefined();
     expect(readDoc?.value.bskyPostRef).toBeUndefined();
@@ -205,6 +258,32 @@ type FeedPost = {
 const CFG = { url: "https://crsren.com", name: "crsren" };
 
 describe("auto-share: minting a canonical Bluesky post", () => {
+  it("uses the document path rather than assuming a root-level slug", async () => {
+    const publisher = agentPublisher(agent);
+    const post = parsePost(
+      `---
+title: "Nested Post"
+slug: nested-post
+path: /blog/nested-post
+publishedAt: 2026-07-19T10:00:00.000Z
+---
+Body.
+`,
+      "nested-post",
+    );
+
+    await publishSite(publisher, CFG, [post], undefined, { share: { enabled: true } });
+    const posts = await listRecords<FeedPost>(pdsUrl, did, BSKY_POST_NSID);
+
+    expect(
+      posts.find(
+        (record) =>
+          record.value.embed?.external?.uri ===
+          "https://crsren.com/blog/nested-post",
+      ),
+    ).toBeDefined();
+  });
+
   it("creates exactly one share post and anchors the document to it", async () => {
     const publisher = agentPublisher(agent);
     const post = parsePost(
@@ -237,7 +316,9 @@ Body.
     expect(result.state.shares["shared-post"]).toEqual({ uri: share!.uri, cid: share!.cid });
 
     // the document's read-back bskyPostRef matches the share post's uri+cid
-    const site = await readSiteFromPds(pdsUrl, did);
+    const site = await readSiteFromPds(pdsUrl, did, fetch, {
+      publicationUri: result.publicationUri,
+    });
     const doc = site.documents.find((d) => d.value.path === "/shared-post");
     expect(doc?.value.bskyPostRef).toEqual({ uri: share!.uri, cid: share!.cid });
   });
@@ -331,7 +412,9 @@ Body.
     expect(after.length - before.length).toBe(0); // no share minted
     expect(result.state.shares["explicit-anchor"]).toBeUndefined();
 
-    const site = await readSiteFromPds(pdsUrl, did);
+    const site = await readSiteFromPds(pdsUrl, did, fetch, {
+      publicationUri: result.publicationUri,
+    });
     const doc = site.documents.find((d) => d.value.path === "/explicit-anchor");
     expect(doc?.value.bskyPostRef).toEqual({ uri: postUri, cid: created.data.cid });
   });
@@ -396,7 +479,9 @@ Orphaned.
     // the pruned doc's share ref is deliberately retained
     expect(second.state.shares["prune-orphan"]).toBeDefined();
 
-    const site = await readSiteFromPds(pdsUrl, did);
+    const site = await readSiteFromPds(pdsUrl, did, fetch, {
+      publicationUri: first.publicationUri,
+    });
     expect(site.documents.find((d) => d.value.path === "/prune-orphan")).toBeUndefined();
     expect(site.documents.find((d) => d.value.path === "/prune-keep")).toBeDefined();
   });
@@ -418,7 +503,9 @@ Body.
     const second = await publishSite(publisher, CFG, [post], first.state, { prune: true });
 
     expect(second.pruned).toEqual([]);
-    const site = await readSiteFromPds(pdsUrl, did);
+    const site = await readSiteFromPds(pdsUrl, did, fetch, {
+      publicationUri: first.publicationUri,
+    });
     expect(site.documents.find((d) => d.value.path === "/prune-noop")).toBeDefined();
   });
 });
@@ -457,7 +544,9 @@ Not ready.
     expect(result.documents.map((d) => d.slug)).toEqual(["draft-live"]);
     expect(result.state.shares["pure-draft"]).toBeUndefined();
 
-    const site = await readSiteFromPds(pdsUrl, did);
+    const site = await readSiteFromPds(pdsUrl, did, fetch, {
+      publicationUri: result.publicationUri,
+    });
     expect(site.documents.find((d) => d.value.path === "/pure-draft")).toBeUndefined();
     expect(site.documents.find((d) => d.value.path === "/draft-live")).toBeDefined();
   });
@@ -477,7 +566,11 @@ Published body.
 
     const first = await publishSite(publisher, CFG, [live]);
     expect(
-      (await readSiteFromPds(pdsUrl, did)).documents.find((d) => d.value.path === "/flip-draft"),
+      (
+        await readSiteFromPds(pdsUrl, did, fetch, {
+          publicationUri: first.publicationUri,
+        })
+      ).documents.find((d) => d.value.path === "/flip-draft"),
     ).toBeDefined();
 
     const drafted = parsePost(
@@ -497,7 +590,9 @@ Published body.
     expect(second.pruned).toEqual([]);
     // record is still tracked in state and still live on the PDS
     expect(second.state.docs["flip-draft"]).toBe(first.state.docs["flip-draft"]);
-    const site = await readSiteFromPds(pdsUrl, did);
+    const site = await readSiteFromPds(pdsUrl, did, fetch, {
+      publicationUri: first.publicationUri,
+    });
     expect(site.documents.find((d) => d.value.path === "/flip-draft")).toBeDefined();
   });
 });
@@ -539,7 +634,9 @@ Body.
     expect(result.state.shares["no-share"]).toBeUndefined();
 
     // both documents are written; only the sharing one carries an anchor
-    const site = await readSiteFromPds(pdsUrl, did);
+    const site = await readSiteFromPds(pdsUrl, did, fetch, {
+      publicationUri: result.publicationUri,
+    });
     expect(site.documents.find((d) => d.value.path === "/will-share")?.value.bskyPostRef).toBeDefined();
     const quiet = site.documents.find((d) => d.value.path === "/no-share");
     expect(quiet).toBeDefined();
@@ -568,7 +665,11 @@ Body.
     // preconditions: share post exists on the PDS and the doc anchors to it
     const listed = await listRecords<FeedPost>(pdsUrl, did, "app.bsky.feed.post");
     expect(listed.find((r) => r.uri === shareRef!.uri)).toBeDefined();
-    const doc0 = (await readSiteFromPds(pdsUrl, did)).documents.find(
+    const doc0 = (
+      await readSiteFromPds(pdsUrl, did, fetch, {
+        publicationUri: first.publicationUri,
+      })
+    ).documents.find(
       (d) => d.value.path === "/unshare-me",
     );
     expect(doc0?.value.bskyPostRef).toEqual(shareRef);
@@ -581,7 +682,11 @@ Body.
     // share post is gone, and the doc read-back no longer carries the anchor
     const afterList = await listRecords<FeedPost>(pdsUrl, did, "app.bsky.feed.post");
     expect(afterList.find((r) => r.uri === shareRef!.uri)).toBeUndefined();
-    const doc1 = (await readSiteFromPds(pdsUrl, did)).documents.find(
+    const doc1 = (
+      await readSiteFromPds(pdsUrl, did, fetch, {
+        publicationUri: first.publicationUri,
+      })
+    ).documents.find(
       (d) => d.value.path === "/unshare-me",
     );
     expect(doc1).toBeDefined();

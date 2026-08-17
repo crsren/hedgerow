@@ -96,6 +96,43 @@ Two related behaviours worth knowing:
 
 Verify what landed in your repo at [pdsls.dev](https://pdsls.dev).
 
+## Editing safely in a browser
+
+`createDocument`, `updateDocument`, and `deleteDocument` own the protocol
+details an editor should not reimplement. New records receive a TID key;
+updates keep the same AT URI and use the CID loaded with the document as a
+compare-and-swap token.
+
+```ts
+import { readSite, updateDocument } from "@hedgerow/publish";
+
+const site = await readSite(authorDid, fetch, { publicationUri });
+const current = site.documents[0];
+if (!current?.uri || !current.cid) throw new Error("Document is not published");
+
+const updated = await updateDocument(publisher, {
+  uri: current.uri,
+  cid: current.cid,
+  document: {
+    site: current.value.site,
+    path: current.value.path,
+    title: "Corrected title",
+    publishedAt: current.value.publishedAt,
+    markdown,
+  },
+});
+```
+
+The update replaces the value at the same record key; it does not create a
+second article. If another tab or client changed the record after it was
+loaded, the write throws `RecordConflictError` and preserves the newer value.
+
+Always select a publication by `publicationUri` or `publicationUrl` when a DID
+can own more than one site. Reads return the publication and document CIDs.
+Hedgerow only edits `pub.hedgerow.content.markdown`; `documentMarkdown()`
+throws for an unknown rich-content union member instead of converting and
+destroying it silently.
+
 ## Connecting a post to its comments
 
 `bskyPostRef` is a `strongRef` on the document pointing at a real Bluesky post

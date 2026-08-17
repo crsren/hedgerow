@@ -48,6 +48,7 @@ function fakeAgent(profile: ProfileView = PROFILE, existingLikes: RecordListItem
       collection: string;
       rkey: string;
       record: Record<string, unknown>;
+      swapRecord?: string | null;
     }) => {
       records.set(`${collection}/${rkey}`, record);
       return { data: { uri: `at://${profile.did}/${collection}/${rkey}`, cid: "bafyupdated" } };
@@ -58,11 +59,17 @@ function fakeAgent(profile: ProfileView = PROFILE, existingLikes: RecordListItem
       const value = records.get(`${collection}/${rkey}`);
       if (!value) // mirror the real XRPCError shape: error field + "Could not locate record" message
               throw Object.assign(new Error("Could not locate record: fake"), { error: "RecordNotFound" });
-      return { data: { value } };
+      return {
+        data: {
+          uri: `at://${profile.did}/${collection}/${rkey}`,
+          cid: "bafyupdated",
+          value,
+        },
+      };
     },
   );
   const deleteRecord = vi.fn(
-    async ({ collection, rkey }: { repo: string; collection: string; rkey: string }) => {
+    async ({ collection, rkey }: { repo: string; collection: string; rkey: string; swapRecord?: string }) => {
       records.delete(`${collection}/${rkey}`);
     },
   );
@@ -412,6 +419,40 @@ describe("createReader — asPublisher", () => {
     const record = { $type: "site.standard.document", title: "Edited" };
     await publisher.putRecord("site.standard.document", "abc123", record);
     expect(await publisher.getRecord("site.standard.document", "abc123")).toEqual(record);
+  });
+
+  it("exposes CIDs and forwards compare-and-swap options", async () => {
+    const session = fakeSession();
+    const { client } = clientWithSession(session);
+    const { agent, putRecord, deleteRecord } = fakeAgent();
+    const reader = createReader({ createClient: () => client, createAgent: () => agent });
+    await reader.restore();
+    const publisher = reader.asPublisher();
+
+    expect(publisher.supportsSwapRecord).toBe(true);
+    await publisher.putRecord(
+      "site.standard.document",
+      "abc123",
+      { $type: "site.standard.document" },
+      { swapRecord: null },
+    );
+    expect(putRecord).toHaveBeenLastCalledWith(
+      expect.objectContaining({ swapRecord: null }),
+    );
+    await expect(
+      publisher.getRecordWithCid("site.standard.document", "abc123"),
+    ).resolves.toEqual({
+      uri: `at://${PROFILE.did}/site.standard.document/abc123`,
+      cid: "bafyupdated",
+      value: { $type: "site.standard.document" },
+    });
+
+    await publisher.deleteRecord("site.standard.document", "abc123", {
+      swapRecord: "bafyupdated",
+    });
+    expect(deleteRecord).toHaveBeenLastCalledWith(
+      expect.objectContaining({ swapRecord: "bafyupdated" }),
+    );
   });
 
   it("getRecord propagates transient errors instead of reporting null (anchor-preservation contract)", async () => {

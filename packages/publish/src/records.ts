@@ -20,6 +20,8 @@ export interface PublicationConfig {
 
 export interface ParsedPost {
   slug: string;
+  /** Canonical path. Defaults to `/${slug}`. */
+  path?: string;
   title: string;
   /** ISO datetime. */
   publishedAt: string;
@@ -61,6 +63,7 @@ export function parsePost(markdown: string, fallbackSlug: string): ParsedPost {
   if (!data.publishedAt) throw new Error(`post "${fallbackSlug}" is missing publishedAt`);
   return {
     slug: String(data.slug ?? fallbackSlug),
+    ...(data.path ? { path: normalizeDocumentPath(String(data.path)) } : {}),
     title: String(data.title),
     publishedAt: new Date(data.publishedAt).toISOString(),
     ...(data.description ? { description: String(data.description) } : {}),
@@ -98,6 +101,48 @@ export function toPlainText(markdown: string): string {
     .trim();
 }
 
+/** Ensure standard.site document paths are origin-relative and canonical. */
+export function normalizeDocumentPath(path: string): string {
+  const trimmed = path.trim();
+  if (!trimmed) throw new Error("document path must not be empty");
+  return trimmed.startsWith("/") ? trimmed : `/${trimmed}`;
+}
+
+/** Framework-neutral input for a Markdown-backed standard.site document. */
+export interface MarkdownDocumentInput {
+  /** at:// URI (or https URL) of the publication this document belongs to. */
+  site: string;
+  title: string;
+  /** ISO datetime. */
+  publishedAt: string;
+  path?: string;
+  description?: string;
+  tags?: string[];
+  markdown: string;
+  bskyPostRef?: StrongRef;
+  updatedAt?: string;
+}
+
+/** Build the complete record written by browser and filesystem authoring paths. */
+export function markdownDocumentRecord(input: MarkdownDocumentInput): DocumentRecord {
+  return {
+    $type: DOCUMENT_NSID,
+    site: input.site,
+    title: input.title,
+    publishedAt: new Date(input.publishedAt).toISOString(),
+    ...(input.path ? { path: normalizeDocumentPath(input.path) } : {}),
+    ...(input.updatedAt
+      ? { updatedAt: new Date(input.updatedAt).toISOString() }
+      : {}),
+    ...(input.description ? { description: input.description } : {}),
+    ...(input.tags ? { tags: input.tags } : {}),
+    ...(input.bskyPostRef ? { bskyPostRef: input.bskyPostRef } : {}),
+    content: { $type: MARKDOWN_CONTENT_NSID, markdown: input.markdown },
+    textContent: toPlainText(input.markdown),
+    [VIA_KEY]: VIA_VALUE,
+  };
+}
+
 export interface DocumentOptions {
   /** at:// URI (or https URL) of the publication this document belongs to. */
   siteUri: string;
@@ -105,26 +150,15 @@ export interface DocumentOptions {
 }
 
 export function documentRecord(post: ParsedPost, opts: DocumentOptions): DocumentRecord {
-  return {
-    $type: DOCUMENT_NSID,
+  return markdownDocumentRecord({
     site: opts.siteUri,
-    path: `/${post.slug}`,
+    path: post.path ?? `/${post.slug}`,
     title: post.title,
     publishedAt: post.publishedAt,
+    markdown: post.body,
     ...(opts.updatedAt ? { updatedAt: opts.updatedAt } : {}),
     ...(post.description ? { description: post.description } : {}),
     ...(post.tags ? { tags: post.tags } : {}),
     ...(post.bskyPostRef ? { bskyPostRef: post.bskyPostRef } : {}),
-    // SLIMS-64: the file-based publish path always has markdown source
-    // (`post.body`), so it always emits the rich `content` member alongside
-    // its plaintext mirror — every consumer still gets a renderable body via
-    // textContent even if it doesn't know the content union's markdown member.
-    content: { $type: MARKDOWN_CONTENT_NSID, markdown: post.body },
-    textContent: toPlainText(post.body),
-    // Tool attribution, outside the lexicon and ignored by readers that don't
-    // know it (SLIMS-71). Unconditional: a stamp only some documents carry
-    // can't be filtered on, since absence would be ambiguous between "not
-    // hedgerow" and "hedgerow, opted out".
-    [VIA_KEY]: VIA_VALUE,
-  };
+  });
 }
