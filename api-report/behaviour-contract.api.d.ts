@@ -98,11 +98,19 @@
 ## Persisted state and identity constants
 
 ### packages/publish/src/oauth.ts — cached session location + the client id's encoded port
-  ATPROTO_SCOPE = <REMOVED OR RENAMED>
   DEFAULT_PORT = 4139
   DEFAULT_STORE_DIR = join(homedir(), ".config", "hedgerow")
   STATE_FILE = "oauth-state.json"
   SESSION_FILE = "oauth-session.json"
+
+### packages/publish/src/documents.ts — author OAuth authority and Bluesky discussion limits
+  SITE_AUTHOR_SCOPE = [
+  "atproto",
+  `repo:${DOCUMENT_NSID}?action=create&action=update&action=delete`,
+  `repo:${BSKY_POST_NSID}?action=create&action=delete`,
+].join(" ")
+  POST_TEXT_MAX_GRAPHEMES = 300
+  POST_TEXT_MAX_BYTES = 3_000
 
 ### packages/publish/src/types.ts — record collection names (the addresses records live at) and the tool-attribution stamp written into every document
   DOCUMENT_NSID = "site.standard.document" as const
@@ -134,8 +142,23 @@
   DEFAULT_CONFIRM_RETRY_DELAYS = [2000, 4000, 6000]
   CONFIRMED_FLASH_MS = 1200
 
-### packages/reader/src/reader.ts — OAuth scope requested of the visitor, and where signup lands
-  ATPROTO_SCOPE = <REMOVED OR RENAMED>
-  DEFAULT_SIGNUP_SERVICE = <REMOVED OR RENAMED>
-  LIKE_COLLECTION = <REMOVED OR RENAMED>
+### packages/reader/src/browser.ts — where signup lands and the identity of the persisted browser-session context
+  DEFAULT_SIGNUP_SERVICE = "https://bsky.social"
+  SESSION_CONTEXT = Symbol.for("pub.hedgerow.browser.session-context")
+
+### packages/reader/src/scopes.ts — identity, social and compatibility OAuth authority
+  IDENTITY_SCOPE = "atproto"
+  BLUESKY_PROFILE_SCOPE = "rpc:app.bsky.actor.getProfile?aud=did:web:api.bsky.app%23bsky_appview"
+  SOCIAL_SCOPE = [
+  IDENTITY_SCOPE,
+  BLUESKY_PROFILE_SCOPE,
+  "repo:app.bsky.feed.post?action=create",
+  "repo:app.bsky.feed.like?action=create&action=delete",
+].join(" ")
+  LEGACY_GENERIC_SCOPE = "atproto transition:generic"
+
+### packages/reader/src/social.ts — where signed likes live and how much history findLike searches
+  LIKE_COLLECTION = "app.bsky.feed.like"
+  LIKE_PAGE_SIZE = 100
+  LIKE_MAX_PAGES = 10
 

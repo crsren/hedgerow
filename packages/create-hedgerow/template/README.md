@@ -6,8 +6,8 @@ with create-hedgerow __HEDGEROW_GENERATOR_VERSION__.
 ## First run
 
 ```bash
-pnpm hedgerow:bootstrap
-pnpm dev
+__HEDGEROW_PACKAGE_MANAGER__ run hedgerow:bootstrap
+__HEDGEROW_PACKAGE_MANAGER__ run dev
 ```
 
 The bootstrap command opens AT Protocol OAuth, creates the
@@ -26,9 +26,9 @@ Then open `/sudo` to write and publish articles.
   Bluesky for writes and can be extended with `hedgerow/social` for in-place
   actions.
 
-The server reads article records from the PDS with a short in-process cache;
-the browser does not fetch article bodies after page load. Publishing verifies
-the new CID against the PDS before refreshing that cache.
+The server reads article records from the PDS and lets the framework/host cache
+the rendered page; the browser does not fetch article bodies after page load.
+Publishing verifies the new CID against the PDS before refreshing that cache.
 
 ## What to customise
 

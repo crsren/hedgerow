@@ -40,8 +40,13 @@ const ts = require("typescript");
 const TRACKED_CONSTANTS = [
   {
     file: "packages/publish/src/oauth.ts",
-    names: ["ATPROTO_SCOPE", "DEFAULT_PORT", "DEFAULT_STORE_DIR", "STATE_FILE", "SESSION_FILE"],
+    names: ["DEFAULT_PORT", "DEFAULT_STORE_DIR", "STATE_FILE", "SESSION_FILE"],
     why: "cached session location + the client id's encoded port",
+  },
+  {
+    file: "packages/publish/src/documents.ts",
+    names: ["SITE_AUTHOR_SCOPE", "POST_TEXT_MAX_GRAPHEMES", "POST_TEXT_MAX_BYTES"],
+    why: "author OAuth authority and Bluesky discussion limits",
   },
   {
     file: "packages/publish/src/types.ts",
@@ -85,9 +90,19 @@ const TRACKED_CONSTANTS = [
     why: "optimistic-reply retry timing consumers build UI around",
   },
   {
-    file: "packages/reader/src/reader.ts",
-    names: ["ATPROTO_SCOPE", "DEFAULT_SIGNUP_SERVICE", "LIKE_COLLECTION"],
-    why: "OAuth scope requested of the visitor, and where signup lands",
+    file: "packages/reader/src/browser.ts",
+    names: ["DEFAULT_SIGNUP_SERVICE", "SESSION_CONTEXT"],
+    why: "where signup lands and the identity of the persisted browser-session context",
+  },
+  {
+    file: "packages/reader/src/scopes.ts",
+    names: ["IDENTITY_SCOPE", "BLUESKY_PROFILE_SCOPE", "SOCIAL_SCOPE", "LEGACY_GENERIC_SCOPE"],
+    why: "identity, social and compatibility OAuth authority",
+  },
+  {
+    file: "packages/reader/src/social.ts",
+    names: ["LIKE_COLLECTION", "LIKE_PAGE_SIZE", "LIKE_MAX_PAGES"],
+    why: "where signed likes live and how much history findLike searches",
   },
 ];
 

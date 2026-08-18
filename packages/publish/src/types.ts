@@ -128,6 +128,8 @@ export interface PublicationRecord {
 
 /** site.standard.document — one published post (key: "tid"). */
 export interface DocumentRecord {
+  /** Unknown standard.site additions and namespaced extensions round-trip. */
+  [key: string]: unknown;
   $type: typeof DOCUMENT_NSID;
   /** at:// ref to the publication record, or a plain https:// publication URL. Required. */
   site: string;

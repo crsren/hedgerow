@@ -4,7 +4,7 @@ Headless React components for showing live Bluesky comments and likes on your ow
 
 A third namespace, `Reply.*`, gives you a headless reply composer — but this package stays read-only and dependency-thin itself: `Reply.Root` takes `session`/`onSubmit` as plain props, so wiring up a real reader identity (e.g. [`@hedgerow/reader`](../reader)'s browser OAuth client) is entirely up to the consumer. See [Reply composer](#reply) below.
 
-A fourth namespace, `Editor.*`, gives you a headless document editor — `document`/`onSave` are plain props too, and `Editor.Body` doesn't ship a rich-text editor of its own (it defaults to a plain `<textarea>`); mount whatever editor you like into its slot. See [Editor](#editor) below.
+The compatibility `Editor.*` namespace is a deliberately small two-field form state machine. New publication editors should start with `create-hedgerow`, which generates the complete TipTap, local-draft, diff and conflict UX as application code you own; `Editor.*` remains for consumers that specifically want the low-level primitive.
 
 Built on [`@hedgerow/comments`](../comments), the zero-dependency read core. The `render` prop follows the [Base UI](https://base-ui.com) contract, so if you've used Base UI or Radix the composition model is the one you already know.
 
@@ -300,7 +300,7 @@ function CustomField() {
 | `Editor.Save` | `button` (`type="submit"`) | `{ isDirty, isSaving, isDisabled }` | Disabled unless the document is dirty (or while saving). Defaults to "Save" / "Saving…" text. |
 | `Editor.Status` | `div` (`role="alert"` when errored) | `{ status, error }` | Always rendered; defaults to a status label ("Unsaved changes", "Saving…", "Saved", "Couldn't save"). Exposes the save error via `state.error`. |
 
-`Editor.*` has **no dependency on `@hedgerow/publish`, `@hedgerow/reader`, or any editor library** — `document`/`onSave` are plain props, so you decide how to load a record and how to persist it. The demo (`apps/demo/src/components/EditorIsland.tsx`) is the reference: it reads via `@hedgerow/publish`'s browser-safe core and saves via `@hedgerow/reader`'s `asPublisher()`, with Tiptap (`@tiptap/react` + `@tiptap/starter-kit` + `tiptap-markdown`, app-land dependencies only) mounted into `Editor.Body`:
+`Editor.*` has **no dependency on `hedgerow/site`, `hedgerow/browser`, or any editor library** — `document`/`onSave` are plain props, so you decide how to load and persist it. For a real AT Protocol publication, use the generated `/sudo` integration from `create-hedgerow`; it binds the curated `hedgerow/site` APIs to TipTap, local drafts and conflict-safe writes. The primitive can still mount any editor into `Editor.Body`:
 
 ```tsx
 import { Editor } from "@hedgerow/react";
@@ -621,7 +621,7 @@ interface UseEditorReturn {
 }
 ```
 
-Like `useReply`, `useEditor` fetches nothing — `document`/`onSave` are where you plug in the actual read/write (the demo uses `@hedgerow/publish`'s read core + `@hedgerow/reader`'s `asPublisher()`).
+Like `useReply`, `useEditor` fetches nothing — `document`/`onSave` are where you plug in the actual read/write. New publication code should use the generated `create-hedgerow` editor and `hedgerow/site`; the compatibility primitive remains protocol-agnostic.
 
 `useLikeButton(options)` is the engine behind `Likes.Button`/`Comments.LikeButton` — same shape as `useReply`: `{ liked, count, onLike, onUnlike, disabled? }` in, `{ liked, count, isBusy, isDisabled, toggle }` out, with the optimistic ±1 count adjustment and rollback-on-rejection built in. Use it directly for fully custom like UI.
 

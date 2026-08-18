@@ -107,6 +107,7 @@ function renderTemplate(source: string, options: CreateStarterOptions): string {
       normalizedProjectName(options.directory, options.projectName),
     ),
     "__HEDGEROW_GENERATOR_VERSION__": GENERATOR_VERSION,
+    "__HEDGEROW_PACKAGE_MANAGER__": options.packageManager ?? packageManagerFromUserAgent(),
     '"hedgerow": "workspace:^"': `"hedgerow": ${JSON.stringify(HEDGEROW_VERSION_RANGE)}`,
     '"@hedgerow/react": "workspace:^"': `"@hedgerow/react": ${JSON.stringify(HEDGEROW_REACT_VERSION_RANGE)}`,
   };

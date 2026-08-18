@@ -83,6 +83,40 @@ describe("single-document operations", () => {
     expect(updated.uri).toBe(uri);
   });
 
+  it("preserves editor-independent standard and extension fields", async () => {
+    const repo = publisher();
+    const uri = `at://${DID}/${DOCUMENT_NSID}/3mdocument`;
+
+    await updateDocument(repo, {
+      uri,
+      cid: "cid-before",
+      preserve: {
+        $type: DOCUMENT_NSID,
+        site: PUBLICATION_URI,
+        title: "Before",
+        publishedAt: documentInput.publishedAt,
+        description: "Remove me",
+        tags: ["remove-me"],
+        labels: { $type: "com.atproto.label.defs#selfLabels", values: [] },
+        coverImage: { $type: "blob", ref: { $link: "bafk-cover" }, mimeType: "image/jpeg", size: 42 },
+        contributors: [{ did: DID, role: "author" }],
+        "example.com.extension": { retained: true },
+      },
+      document: { ...documentInput, title: "After" },
+    });
+
+    const value = vi.mocked(repo.putRecord).mock.calls[0]![2];
+    expect(value).toMatchObject({
+      title: "After",
+      labels: expect.any(Object),
+      coverImage: expect.any(Object),
+      contributors: [{ did: DID, role: "author" }],
+      "example.com.extension": { retained: true },
+    });
+    expect(value).not.toHaveProperty("description");
+    expect(value).not.toHaveProperty("tags");
+  });
+
   it("deletes only the loaded version", async () => {
     const repo = publisher();
     const uri = `at://${DID}/${DOCUMENT_NSID}/3mdocument`;
@@ -171,6 +205,29 @@ describe("startDiscussion", () => {
       expect.any(String),
       { swapRecord: "cid-post" },
     );
+  });
+
+  it("truncates generated discussion copy to Bluesky's text limit", async () => {
+    const repo = publisher();
+    const document = {
+      uri: `at://${DID}/${DOCUMENT_NSID}/3mdocument`,
+      cid: "cid-document",
+      value: {
+        $type: DOCUMENT_NSID,
+        site: PUBLICATION_URI,
+        title: "Long title ".repeat(60),
+        publishedAt: "2026-08-17T10:00:00.000Z",
+      },
+    } as const;
+
+    await startDiscussion(repo, {
+      document,
+      canonicalUrl: "https://example.com/blog/hello",
+    });
+
+    const post = vi.mocked(repo.putRecord).mock.calls[0]![2] as { text: string };
+    expect([...new Intl.Segmenter(undefined, { granularity: "grapheme" }).segment(post.text)].length).toBeLessThanOrEqual(300);
+    expect(post.text.endsWith("…\n\nhttps://example.com/blog/hello")).toBe(true);
   });
 });
 
@@ -277,5 +334,26 @@ describe("publication-bound author", () => {
       expect.objectContaining({ bskyPostRef }),
       { swapRecord: "cid-before" },
     );
+  });
+
+  it("accepts URL-linked documents when the publication URL is pinned", async () => {
+    const repo = publisher();
+    const author = createSiteAuthor(repo, {
+      ownerDid: DID,
+      publicationUri: PUBLICATION_URI,
+      publicationUrl: "https://example.com",
+    });
+    const snapshot = {
+      uri: `at://${DID}/${DOCUMENT_NSID}/3mlegacy`,
+      cid: "cid-before",
+      value: {
+        $type: DOCUMENT_NSID,
+        site: "https://example.com/",
+        title: "Legacy",
+        publishedAt: documentInput.publishedAt,
+      },
+    } as const;
+
+    await expect(author.deleteDocument(snapshot)).resolves.toBeUndefined();
   });
 });

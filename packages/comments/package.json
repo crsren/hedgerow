@@ -20,6 +20,9 @@
   "license": "MIT",
   "sideEffects": false,
   "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
   "exports": {
     ".": {
       "development": "./src/index.ts",
