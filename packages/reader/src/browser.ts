@@ -86,19 +86,34 @@ export function publisherForSession(session: BrowserSession): PublisherLike {
     if (!agent.com) throw new Error("BrowserSession needs com.atproto.repo.* access");
     return agent.com.atproto.repo;
   }
+  type CreateCapableRepository = ReturnType<typeof repo> & {
+    createRecord(params: {
+      repo: string;
+      collection: string;
+      rkey: string;
+      record: Record<string, unknown>;
+    }): Promise<{ data: { uri: string; cid: string } }>;
+  };
+  const canCreate = (
+    repository: ReturnType<typeof repo>,
+  ): repository is CreateCapableRepository =>
+    "createRecord" in repository && typeof repository.createRecord === "function";
   return {
     did,
     supportsSwapRecord: true,
     async putRecord(collection, rkey, record, options) {
-      const response = await repo().putRecord({
-        repo: did,
-        collection,
-        rkey,
-        record,
-        ...(options && "swapRecord" in options
-          ? { swapRecord: options.swapRecord }
-          : {}),
-      });
+      const repository = repo();
+      const response = options?.swapRecord === null && canCreate(repository)
+        ? await repository.createRecord({ repo: did, collection, rkey, record })
+        : await repository.putRecord({
+            repo: did,
+            collection,
+            rkey,
+            record,
+            ...(options && "swapRecord" in options
+              ? { swapRecord: options.swapRecord }
+              : {}),
+          });
       return { uri: response.data.uri, cid: response.data.cid };
     },
     async getRecord(collection, rkey) {

@@ -55,6 +55,21 @@ function fakeAgent(profile: ProfileView = PROFILE, existingLikes: RecordListItem
       return { data: { uri: `at://${profile.did}/${collection}/${rkey}`, cid: "bafyupdated" } };
     },
   );
+  const createRecord = vi.fn(
+    async ({
+      collection,
+      rkey,
+      record,
+    }: {
+      repo: string;
+      collection: string;
+      rkey: string;
+      record: Record<string, unknown>;
+    }) => {
+      records.set(`${collection}/${rkey}`, record);
+      return { data: { uri: `at://${profile.did}/${collection}/${rkey}`, cid: "bafycreated" } };
+    },
+  );
   const getRecord = vi.fn(
     async ({ collection, rkey }: { repo: string; collection: string; rkey: string }) => {
       const value = records.get(`${collection}/${rkey}`);
@@ -95,7 +110,7 @@ function fakeAgent(profile: ProfileView = PROFILE, existingLikes: RecordListItem
       like,
       deleteLike,
       listOwnRecords,
-      com: { atproto: { repo: { putRecord, getRecord, deleteRecord } } },
+      com: { atproto: { repo: { createRecord, putRecord, getRecord, deleteRecord } } },
     } as unknown as AgentLike,
     getProfile,
     post,
@@ -103,6 +118,7 @@ function fakeAgent(profile: ProfileView = PROFILE, existingLikes: RecordListItem
     deleteLike,
     listOwnRecords,
     putRecord,
+    createRecord,
     getRecord,
     deleteRecord,
     records,
@@ -451,7 +467,7 @@ describe("createReader — asPublisher", () => {
   it("exposes CIDs and forwards compare-and-swap options", async () => {
     const session = fakeSession();
     const { client } = clientWithSession(session);
-    const { agent, putRecord, deleteRecord } = fakeAgent();
+    const { agent, createRecord, putRecord, deleteRecord } = fakeAgent();
     const reader = createReader({ createClient: () => client, createAgent: () => agent });
     await reader.restore();
     const publisher = reader.asPublisher();
@@ -463,9 +479,13 @@ describe("createReader — asPublisher", () => {
       { $type: "site.standard.document" },
       { swapRecord: null },
     );
-    expect(putRecord).toHaveBeenLastCalledWith(
-      expect.objectContaining({ swapRecord: null }),
-    );
+    expect(createRecord).toHaveBeenLastCalledWith({
+      repo: PROFILE.did,
+      collection: "site.standard.document",
+      rkey: "abc123",
+      record: { $type: "site.standard.document" },
+    });
+    expect(putRecord).not.toHaveBeenCalled();
     await expect(
       publisher.getRecordWithCid("site.standard.document", "abc123"),
     ).resolves.toEqual({
