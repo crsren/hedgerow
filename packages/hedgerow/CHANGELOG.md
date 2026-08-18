@@ -1,5 +1,16 @@
 # hedgerow
 
+## 0.1.1
+
+### Patch Changes
+
+- [#38](https://github.com/crsren/hedgerow/pull/38) [`5e902d1`](https://github.com/crsren/hedgerow/commit/5e902d1ec3051c65735c3e46f757111ff5092648) Thanks [@crsren](https://github.com/crsren)! - Declare the Node 20 runtime floor and direct new editor integrations to the curated Hedgerow facade and generated starter.
+
+- Updated dependencies [[`363b1f1`](https://github.com/crsren/hedgerow/commit/363b1f11d51ea4008a1e630422ed039d034b9b7f), [`5e902d1`](https://github.com/crsren/hedgerow/commit/5e902d1ec3051c65735c3e46f757111ff5092648), [`5e902d1`](https://github.com/crsren/hedgerow/commit/5e902d1ec3051c65735c3e46f757111ff5092648)]:
+  - @hedgerow/publish@0.3.1
+  - @hedgerow/reader@0.3.1
+  - @hedgerow/comments@0.3.1
+
 ## 0.1.0
 
 ### Minor Changes

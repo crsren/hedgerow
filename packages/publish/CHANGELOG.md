@@ -1,5 +1,13 @@
 # @hedgerow/publish
 
+## 0.3.1
+
+### Patch Changes
+
+- [#40](https://github.com/crsren/hedgerow/pull/40) [`363b1f1`](https://github.com/crsren/hedgerow/commit/363b1f11d51ea4008a1e630422ed039d034b9b7f) Thanks [@crsren](https://github.com/crsren)! - Use `com.atproto.repo.createRecord` for conflict-safe new records so granular OAuth authoring needs create permission rather than unnecessary update permission.
+
+- [#38](https://github.com/crsren/hedgerow/pull/38) [`5e902d1`](https://github.com/crsren/hedgerow/commit/5e902d1ec3051c65735c3e46f757111ff5092648) Thanks [@crsren](https://github.com/crsren)! - Preserve document fields outside the Markdown editor's ownership, accept configured publication-URL membership, narrow author OAuth permissions, keep generated Bluesky discussion copy within protocol limits, and declare the Node 20 runtime floor.
+
 ## 0.3.0
 
 ### Minor Changes
