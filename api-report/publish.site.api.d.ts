@@ -46,6 +46,7 @@ interface PublicationRecord {
     description?: string;
 }
 interface DocumentRecord {
+    [key: string]: unknown;
     $type: typeof DOCUMENT_NSID;
     site: string;
     title: string;
@@ -143,6 +144,7 @@ interface UpdateDocumentInput {
     uri: string;
     cid: string;
     document: Omit<MarkdownDocumentInput, "updatedAt">;
+    preserve?: DocumentRecord;
 }
 declare function updateDocument(publisher: ConditionalPublisher, input: UpdateDocumentInput): Promise<DocumentSnapshot>;
 interface DeleteDocumentInput {
@@ -163,6 +165,7 @@ declare function startDiscussion(publisher: ConditionalPublisher, input: StartDi
 interface SiteAuthorOptions {
     ownerDid: string;
     publicationUri: string;
+    publicationUrl?: string;
 }
 type SiteAuthorDocumentInput = Omit<MarkdownDocumentInput, "site" | "updatedAt" | "bskyPostRef">;
 interface SiteAuthorUpdateInput {

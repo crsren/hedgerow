@@ -20,7 +20,7 @@ protocol and compatibility surface.
 npm install @hedgerow/publish
 ```
 
-Node ≥ 20. ESM-only.
+Node ≥ 20. ESM-only. The generated Astro starter requires Node ≥ 22.12.
 
 ## Entry points
 

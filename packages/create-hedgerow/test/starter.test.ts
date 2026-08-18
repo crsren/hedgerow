@@ -16,6 +16,10 @@ const base = {
   install: false,
 };
 
+async function planFiles(directory: string): Promise<string[]> {
+  return (await planStarter({ ...base, directory })).files;
+}
+
 describe("createStarter", () => {
   it("plans without writing and exposes every generated file", async () => {
     const root = await mkdtemp(join(tmpdir(), "create-hedgerow-plan-"));
@@ -46,7 +50,21 @@ describe("createStarter", () => {
     expect(manifest.dependencies["@hedgerow/react"]).toBe("^0.3.0");
     expect(readme).not.toContain("__HEDGEROW_");
     expect(JSON.stringify(manifest)).not.toContain("workspace:");
+    expect(manifest).not.toHaveProperty("packageManager");
+    expect(await planFiles(target)).not.toContain("CHANGELOG.md");
   });
+
+  it.each(["pnpm", "npm", "yarn", "bun"] as const)(
+    "renders %s commands consistently",
+    async (packageManager) => {
+      const root = await mkdtemp(join(tmpdir(), `create-hedgerow-${packageManager}-`));
+      const target = join(root, "site");
+      await createStarter({ ...base, directory: target, packageManager });
+      const readme = await readFile(join(target, "README.md"), "utf8");
+      expect(readme).toContain(`${packageManager} run hedgerow:bootstrap`);
+      expect(readme).toContain(`${packageManager} run dev`);
+    },
+  );
 
   it("escapes configuration as JavaScript and JSON values", async () => {
     const root = await mkdtemp(join(tmpdir(), "create-hedgerow-escape-"));

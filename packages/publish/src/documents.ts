@@ -18,15 +18,13 @@ import {
 } from "./types.js";
 
 /**
- * Maximum OAuth permissions for Hedgerow authoring: publication/document
- * records plus creating and compensating discussion posts. The profile RPC
- * lets an editor identify the active account without broad Bluesky access.
+ * Maximum OAuth permissions for Hedgerow authoring: document records plus
+ * creating and compensating discussion posts. Publication records are read
+ * publicly; granting their mutation would exceed the SiteAuthor API.
  */
 export const SITE_AUTHOR_SCOPE = [
   "atproto",
-  "rpc:app.bsky.actor.getProfile?aud=did:web:api.bsky.app%23bsky_appview",
-  `repo:${PUBLICATION_NSID}`,
-  `repo:${DOCUMENT_NSID}`,
+  `repo:${DOCUMENT_NSID}?action=create&action=update&action=delete`,
   `repo:${BSKY_POST_NSID}?action=create&action=delete`,
 ].join(" ");
 
@@ -126,6 +124,30 @@ export interface UpdateDocumentInput {
   /** CID observed when the draft's published baseline was loaded. */
   cid: string;
   document: Omit<MarkdownDocumentInput, "updatedAt">;
+  /**
+   * Loaded record whose editor-independent fields should survive the update.
+   * Editor-owned Markdown, metadata and membership fields are always replaced
+   * by `document`.
+   */
+  preserve?: DocumentRecord;
+}
+
+function preservedDocumentFields(record?: DocumentRecord): Record<string, unknown> {
+  if (!record) return {};
+  const {
+    $type: _type,
+    site: _site,
+    title: _title,
+    publishedAt: _publishedAt,
+    path: _path,
+    description: _description,
+    tags: _tags,
+    updatedAt: _updatedAt,
+    content: _content,
+    textContent: _textContent,
+    ...preserved
+  } = record;
+  return preserved;
 }
 
 /** Update the same AT record, failing if its CID changed since it was loaded. */
@@ -134,10 +156,13 @@ export async function updateDocument(
   input: UpdateDocumentInput,
 ): Promise<DocumentSnapshot> {
   const target = documentTarget(publisher, input.uri);
-  const value = markdownDocumentRecord({
-    ...input.document,
-    updatedAt: new Date().toISOString(),
-  });
+  const value: DocumentRecord = {
+    ...preservedDocumentFields(input.preserve),
+    ...markdownDocumentRecord({
+      ...input.document,
+      updatedAt: new Date().toISOString(),
+    }),
+  };
   const result = await putWithExpectedCid(
     publisher,
     DOCUMENT_NSID,
@@ -175,6 +200,40 @@ export interface StartDiscussionResult {
   post: StrongRef;
 }
 
+const POST_TEXT_MAX_GRAPHEMES = 300;
+const POST_TEXT_MAX_BYTES = 3_000;
+const graphemeSegmenter = new Intl.Segmenter(undefined, { granularity: "grapheme" });
+const textEncoder = new TextEncoder();
+
+function postTextFits(value: string): boolean {
+  return [...graphemeSegmenter.segment(value)].length <= POST_TEXT_MAX_GRAPHEMES
+    && textEncoder.encode(value).byteLength <= POST_TEXT_MAX_BYTES;
+}
+
+function discussionText(title: string, canonicalUrl: string, requested?: string): string {
+  if (requested !== undefined) {
+    if (!postTextFits(requested)) {
+      throw new Error("discussion text exceeds Bluesky's 300-grapheme or 3000-byte limit");
+    }
+    return requested;
+  }
+
+  const suffix = `\n\n${canonicalUrl}`;
+  const complete = `${title}${suffix}`;
+  if (postTextFits(complete)) return complete;
+  if (!postTextFits(suffix)) {
+    throw new Error("canonical URL is too long for a Bluesky discussion post");
+  }
+
+  let shortened = "";
+  for (const { segment } of graphemeSegmenter.segment(title)) {
+    const candidate = `${shortened}${segment}…${suffix}`;
+    if (!postTextFits(candidate)) break;
+    shortened += segment;
+  }
+  return shortened ? `${shortened.trimEnd()}…${suffix}` : suffix.trimStart();
+}
+
 /**
  * Create a Bluesky discussion post and link it to a document. If the document
  * update loses a race, the newly-created post is deleted again.
@@ -187,7 +246,11 @@ export async function startDiscussion(
   const postRkey = TID.nextStr();
   const postValue = {
     $type: BSKY_POST_NSID,
-    text: input.text ?? `${input.document.value.title}\n\n${input.canonicalUrl}`,
+    text: discussionText(
+      input.document.value.title,
+      input.canonicalUrl,
+      input.text,
+    ),
     createdAt: new Date().toISOString(),
     embed: {
       $type: "app.bsky.embed.external",
@@ -238,6 +301,8 @@ export async function startDiscussion(
 export interface SiteAuthorOptions {
   ownerDid: string;
   publicationUri: string;
+  /** Canonical URL accepted for legacy/loose document membership. */
+  publicationUrl?: string;
 }
 
 /** Document fields supplied by an editor; publication membership is injected. */
@@ -272,12 +337,15 @@ export interface SiteAuthor {
 }
 
 function assertPublicationMember(
-  publicationUri: string,
+  options: SiteAuthorOptions,
   snapshot: DocumentSnapshot,
 ): void {
-  if (snapshot.value.site !== publicationUri) {
+  const member = snapshot.value.site === options.publicationUri
+    || (options.publicationUrl !== undefined
+      && snapshot.value.site.replace(/\/+$/, "") === options.publicationUrl.replace(/\/+$/, ""));
+  if (!member) {
     throw new Error(
-      `document ${snapshot.uri} belongs to ${snapshot.value.site ?? "no publication"}, not ${publicationUri}`,
+      `document ${snapshot.uri} belongs to ${snapshot.value.site ?? "no publication"}, not ${options.publicationUri}`,
     );
   }
 }
@@ -314,28 +382,26 @@ export function createSiteAuthor(
       });
     },
     async updateDocument(input) {
-      assertPublicationMember(options.publicationUri, input.snapshot);
+      assertPublicationMember(options, input.snapshot);
       return await updateDocument(publisher, {
         uri: input.snapshot.uri,
         cid: input.snapshot.cid,
+        preserve: input.snapshot.value,
         document: {
           ...input.document,
           site: options.publicationUri,
-          ...(input.snapshot.value.bskyPostRef
-            ? { bskyPostRef: input.snapshot.value.bskyPostRef }
-            : {}),
         },
       });
     },
     async deleteDocument(snapshot) {
-      assertPublicationMember(options.publicationUri, snapshot);
+      assertPublicationMember(options, snapshot);
       await deleteDocument(publisher, {
         uri: snapshot.uri,
         cid: snapshot.cid,
       });
     },
     async startDiscussion(input) {
-      assertPublicationMember(options.publicationUri, input.snapshot);
+      assertPublicationMember(options, input.snapshot);
       return await startDiscussion(publisher, {
         document: input.snapshot,
         canonicalUrl: input.canonicalUrl,

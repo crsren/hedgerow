@@ -50,7 +50,7 @@ The seam that keeps that true: **`@hedgerow/react` never imports `@hedgerow/read
 
 ## Quickstart
 
-Requires Node ≥ 22.12 and pnpm (the pinned version comes from the `packageManager` field — `corepack enable` will honour it).
+Contributing to this monorepo requires Node ≥ 22.12 and pnpm (the pinned version comes from the root `packageManager` field). Published libraries support Node ≥ 20; the generated Astro 7 starter requires Node ≥ 22.12 and uses the package manager that invoked the CLI.
 
 To start a new publication (the generated Astro 7 app requires Node ≥ 22.12):
 
