@@ -17,6 +17,13 @@ import {
   type StrongRef,
 } from "./types.js";
 
+function isRecordAlreadyExists(error: unknown): boolean {
+  if (typeof error !== "object" || error === null) return false;
+  const value = error as { error?: unknown; name?: unknown };
+  return value.error === "RecordAlreadyExists"
+    || value.name === "RecordAlreadyExistsError";
+}
+
 /**
  * Maximum OAuth permissions for Hedgerow authoring: document records plus
  * creating and compensating discussion posts. Publication records are read
@@ -68,7 +75,7 @@ async function putWithExpectedCid(
     });
   } catch (error) {
     if (error instanceof RecordConflictError) throw error;
-    if (isInvalidSwap(error)) {
+    if (isInvalidSwap(error) || (expectedCid === null && isRecordAlreadyExists(error))) {
       throw new RecordConflictError(
         `record changed before it could be written: at://${publisher.did}/${collection}/${rkey}`,
         expectedCid,

@@ -80,6 +80,13 @@ export function isInvalidSwap(err: unknown): boolean {
   return e.error === "InvalidSwap" || e.name === "InvalidSwapError";
 }
 
+/** True when a conditional create found an existing record at the requested key. */
+function isRecordAlreadyExists(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const e = err as { error?: unknown; name?: unknown };
+  return e.error === "RecordAlreadyExists" || e.name === "RecordAlreadyExistsError";
+}
+
 /** Narrow a legacy Publisher to the conditional surface. */
 export function supportsConditionalWrites(
   publisher: Publisher,
@@ -104,18 +111,20 @@ export function agentPublisher(agent: Agent): ConditionalPublisher {
     supportsSwapRecord: true,
     async putRecord(collection, rkey, record, options) {
       try {
-        const res = await agent.com.atproto.repo.putRecord({
-          repo: did,
-          collection,
-          rkey,
-          record,
-          ...(options && "swapRecord" in options
-            ? { swapRecord: options.swapRecord }
-            : {}),
-        });
+        const res = options?.swapRecord === null
+          ? await agent.com.atproto.repo.createRecord({ repo: did, collection, rkey, record })
+          : await agent.com.atproto.repo.putRecord({
+              repo: did,
+              collection,
+              rkey,
+              record,
+              ...(options && "swapRecord" in options
+                ? { swapRecord: options.swapRecord }
+                : {}),
+            });
         return { uri: res.data.uri, cid: res.data.cid };
       } catch (err) {
-        if (isInvalidSwap(err)) {
+        if (isInvalidSwap(err) || (options?.swapRecord === null && isRecordAlreadyExists(err))) {
           throw new RecordConflictError(
             `record changed before it could be written: at://${did}/${collection}/${rkey}`,
             options?.swapRecord ?? null,

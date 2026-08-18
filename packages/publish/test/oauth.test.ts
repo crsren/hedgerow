@@ -73,6 +73,11 @@ describe("agentPublisher over an OAuth-session Agent", () => {
       com: {
         atproto: {
           repo: {
+            async createRecord(params: { collection: string; rkey: string; record: unknown }) {
+              calls.push({ method: "createRecord", params });
+              store.set(`${params.collection}/${params.rkey}`, params.record as Record<string, unknown>);
+              return { data: { uri: `at://${did}/${params.collection}/${params.rkey}`, cid: "cid-created" } };
+            },
             async putRecord(params: { collection: string; rkey: string; record: unknown }) {
               calls.push({ method: "putRecord", params });
               store.set(`${params.collection}/${params.rkey}`, params.record as Record<string, unknown>);
@@ -143,6 +148,23 @@ describe("agentPublisher over an OAuth-session Agent", () => {
     // every repo call was addressed to the agent's own repo (did)
     const repos = calls.map((c) => (c.params as { repo?: string }).repo);
     expect(new Set(repos)).toEqual(new Set(["did:plc:me"]));
+  });
+
+  it("uses createRecord for a conditional create so granular OAuth needs create, not update", async () => {
+    const { agent, calls } = fakeAgent("did:plc:me");
+    const pub = agentPublisher(agent);
+
+    await pub.putRecord(
+      "app.bsky.feed.post",
+      "new-post",
+      { $type: "app.bsky.feed.post", text: "Hello" },
+      { swapRecord: null },
+    );
+
+    expect(calls.at(-1)).toMatchObject({
+      method: "createRecord",
+      params: { repo: "did:plc:me", collection: "app.bsky.feed.post", rkey: "new-post" },
+    });
   });
 });
 
