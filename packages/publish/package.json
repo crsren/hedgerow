@@ -1,6 +1,6 @@
 {
   "name": "@hedgerow/publish",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Publish markdown posts as standard.site atproto records to a PDS.",
   "keywords": [
     "atproto",

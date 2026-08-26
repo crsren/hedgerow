@@ -1,5 +1,14 @@
 # @hedgerow/react
 
+## 0.3.1
+
+### Patch Changes
+
+- [#38](https://github.com/crsren/hedgerow/pull/38) [`5e902d1`](https://github.com/crsren/hedgerow/commit/5e902d1ec3051c65735c3e46f757111ff5092648) Thanks [@crsren](https://github.com/crsren)! - Declare the Node 20 runtime floor and direct new editor integrations to the curated Hedgerow facade and generated starter.
+
+- Updated dependencies [[`5e902d1`](https://github.com/crsren/hedgerow/commit/5e902d1ec3051c65735c3e46f757111ff5092648)]:
+  - @hedgerow/comments@0.3.1
+
 ## 0.3.0
 
 ### Minor Changes

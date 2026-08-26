@@ -1,5 +1,11 @@
 # create-hedgerow
 
+## 0.1.1
+
+### Patch Changes
+
+- [#38](https://github.com/crsren/hedgerow/pull/38) [`5e902d1`](https://github.com/crsren/hedgerow/commit/5e902d1ec3051c65735c3e46f757111ff5092648) Thanks [@crsren](https://github.com/crsren)! - Keep generated projects free of internal release files and render setup commands for the npm, pnpm, Yarn, or Bun choice that invoked the starter.
+
 ## 0.1.0
 
 ### Minor Changes
