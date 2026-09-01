@@ -86,13 +86,13 @@
     "gray-matter": "^4.0.3"
   },
   "devDependencies": {
-    "@atproto/dev-env": "^0.5.36",
-    "@atproto/lexicon": "^0.7.7",
+    "@atproto/dev-env": "^0.6.4",
+    "@atproto/lexicon": "^0.7.12",
     "@hedgerow/tsconfig": "workspace:*",
     "@types/node": "^22.10.2",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^4.1.11",
     "tsup": "^8.3.5",
     "typescript": "^5.9.3",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.11"
   }
 }
