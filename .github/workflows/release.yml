@@ -182,7 +182,7 @@ jobs:
       # and re-running it here would put the whole toolchain back inside the
       # OIDC-scoped job, which is the thing this split exists to prevent.
       - name: Create Release PR or publish
-        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1
+        uses: changesets/action@ae32849d5ba541f9ae29e40e22a623bc13562f51 # v1
         with:
           publish: pnpm release:ci
         env:
